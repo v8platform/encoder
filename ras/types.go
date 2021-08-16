@@ -25,23 +25,3 @@ func (t TypeInterface) raw() byte {
 func (t TypeInterface) Type() byte {
 	return byte(t)
 }
-
-type CodecKind int8 // keep exact type opaque as the int type may change
-
-// Constants as defined by the google.protobuf.CodecField.Kind enumeration.
-const (
-	TypeKind CodecKind = iota
-	BoolKind
-	Int32Kind
-	Uint32Kind
-	Int64Kind
-	Uint64Kind
-	Fixed32Kind
-	FloatKind
-	Fixed64Kind
-	DoubleKind
-	StringKind
-	BytesKind
-	MessageKind
-	TimestampKind
-)

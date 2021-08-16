@@ -3,6 +3,7 @@ package ras
 import (
 	"encoding/binary"
 	"fmt"
+	uuid "github.com/satori/go.uuid"
 	pb "google.golang.org/protobuf/types/known/timestamppb"
 	"io"
 	"math"
@@ -13,7 +14,7 @@ import (
 
 var decoderFunc = map[string]TypeDecoderFunc{}
 
-type TypeDecoderFunc func(r io.Reader, into interface{}) error
+type TypeDecoderFunc func(r io.Reader, into interface{}, opts ...map[string]string) error
 
 func init() {
 	RegisterDecoderType("time", decodeTime)
@@ -28,6 +29,8 @@ func init() {
 	RegisterDecoderType("string", decodeString)
 	RegisterDecoderType("null-size", decodeNullableSize)
 	RegisterDecoderType("size", decodeSize)
+	RegisterDecoderType("bytes", decodeBytes)
+	RegisterDecoderType("uuid", decodeUUID)
 }
 
 func RegisterDecoderType(name string, dec TypeDecoderFunc) {
@@ -39,7 +42,47 @@ func RegisterDecoderType(name string, dec TypeDecoderFunc) {
 	}
 }
 
-func decodeTime(r io.Reader, into interface{}) error {
+func decodeBytes(r io.Reader, into interface{}, opts ...map[string]string) error {
+	return nil
+}
+
+func decodeUUID(r io.Reader, into interface{}, opts ...map[string]string) error {
+
+	buf := make([]byte, 16)
+	_, err := r.Read(buf)
+	if err != nil {
+		return &TypeDecodeError{
+			"uuid",
+			err.Error(),
+		}
+	}
+
+	u, err := uuid.FromBytes(buf)
+	if err != nil {
+		return &TypeDecodeError{
+			"uuid",
+			err.Error(),
+		}
+	}
+
+	switch typed := into.(type) {
+	case []byte:
+		copy(typed, buf)
+	case *[]byte:
+		*typed = buf
+	case *string:
+		*typed = u.String()
+	case *uuid.UUID:
+		*typed = u
+	default:
+		return &TypeDecodeError{"uuid",
+			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
+	}
+
+	return nil
+}
+
+func decodeTime(r io.Reader, into interface{}, opts ...map[string]string) error {
 
 	buf := make([]byte, 8)
 	_, err := r.Read(buf)
@@ -72,7 +115,7 @@ func decodeTime(r io.Reader, into interface{}) error {
 	return nil
 }
 
-func decodeType(r io.Reader, into interface{}) error {
+func decodeType(r io.Reader, into interface{}, opts ...map[string]string) error {
 
 	buf := make([]byte, 1)
 	_, err := r.Read(buf)
@@ -96,7 +139,7 @@ func decodeType(r io.Reader, into interface{}) error {
 	return nil
 }
 
-func decodeByte(r io.Reader, into interface{}) error {
+func decodeByte(r io.Reader, into interface{}, opts ...map[string]string) error {
 	buf := make([]byte, 1)
 	_, err := r.Read(buf)
 	if err != nil {
@@ -120,7 +163,7 @@ func decodeByte(r io.Reader, into interface{}) error {
 	return nil
 }
 
-func decodeBool(r io.Reader, into interface{}) error {
+func decodeBool(r io.Reader, into interface{}, opts ...map[string]string) error {
 	buf := make([]byte, 1)
 	_, err := r.Read(buf)
 	if err != nil {
@@ -158,7 +201,7 @@ func decodeBool(r io.Reader, into interface{}) error {
 
 }
 
-func decodeUint16(r io.Reader, into interface{}) error {
+func decodeUint16(r io.Reader, into interface{}, opts ...map[string]string) error {
 
 	buf := make([]byte, 2)
 	_, err := r.Read(buf)
@@ -194,7 +237,7 @@ func decodeUint16(r io.Reader, into interface{}) error {
 
 }
 
-func decodeUint32(r io.Reader, into interface{}) error {
+func decodeUint32(r io.Reader, into interface{}, opts ...map[string]string) error {
 	buf := make([]byte, 4)
 	_, err := r.Read(buf)
 	if err != nil {
@@ -229,7 +272,7 @@ func decodeUint32(r io.Reader, into interface{}) error {
 
 }
 
-func decodeUint64(r io.Reader, into interface{}) error {
+func decodeUint64(r io.Reader, into interface{}, opts ...map[string]string) error {
 	buf := make([]byte, 8)
 	_, err := r.Read(buf)
 	if err != nil {
@@ -264,7 +307,7 @@ func decodeUint64(r io.Reader, into interface{}) error {
 
 }
 
-func decodeFloat32(r io.Reader, into interface{}) error {
+func decodeFloat32(r io.Reader, into interface{}, opts ...map[string]string) error {
 	buf := make([]byte, 4)
 	_, err := r.Read(buf)
 	if err != nil {
@@ -288,7 +331,7 @@ func decodeFloat32(r io.Reader, into interface{}) error {
 	return nil
 }
 
-func decodeFloat64(r io.Reader, into interface{}) error {
+func decodeFloat64(r io.Reader, into interface{}, opts ...map[string]string) error {
 
 	buf := make([]byte, 8)
 	_, err := r.Read(buf)
@@ -313,7 +356,7 @@ func decodeFloat64(r io.Reader, into interface{}) error {
 	return nil
 }
 
-func decodeString(r io.Reader, into interface{}) error {
+func decodeString(r io.Reader, into interface{}, opts ...map[string]string) error {
 
 	var size int
 	err := decodeNullableSize(r, &size)
@@ -342,7 +385,7 @@ func decodeString(r io.Reader, into interface{}) error {
 	return nil
 }
 
-func decodeNullableSize(r io.Reader, into interface{}) error {
+func decodeNullableSize(r io.Reader, into interface{}, opts ...map[string]string) error {
 
 	readByte := func(fnName string) (byte, error) {
 		buf := make([]byte, 1)
@@ -427,7 +470,7 @@ func applyNullableSize(val int, into interface{}) error {
 	return nil
 }
 
-func decodeSize(r io.Reader, into interface{}) error {
+func decodeSize(r io.Reader, into interface{}, opts ...map[string]string) error {
 
 	readByte := func(fnName string) (byte, error) {
 		buf := make([]byte, 1)
@@ -497,5 +540,5 @@ func (e *TypeDecodeError) Error() string {
 	// if e.Type.Kind() != reflect.Ptr {
 	// 	return "ras: Decode(non-pointer " + e.Type.String() + ")"
 	// }
-	return "ras: (encoderFunc " + e.Mame + ") " + e.Msg + ""
+	return "ras: (decoderFunc " + e.Mame + ") " + e.Msg + ""
 }

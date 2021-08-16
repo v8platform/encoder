@@ -3,6 +3,7 @@ package ras
 import (
 	"bytes"
 	"github.com/k0kubun/pp"
+	uuid "github.com/satori/go.uuid"
 	pb "google.golang.org/protobuf/types/known/timestamppb"
 	"testing"
 	"time"
@@ -43,12 +44,12 @@ func getTestData() []byte {
 	codec.Int32(111, buf)
 	codec.Uint64(222, buf)
 	codec.Size(2, buf)
+	codec.Uuid(uuid.NewV1(), buf)
 	codec.Int32(1, buf)
 	codec.String("Блокировка 1", buf)
-	// codec.Time(time.Now().AddDate(0, -1, 9), buf)
+	codec.Uuid(uuid.NewV1(), buf)
 	codec.Int32(2, buf)
 	codec.String("Блокировка 2", buf)
-	// codec.Time(time.Now().AddDate(0, 0, 30), buf)
 	codec.Time(time.Now().AddDate(0, -1, 9), buf)
 
 	return buf.Bytes()
@@ -62,7 +63,8 @@ type Message struct {
 }
 
 type Lock struct {
-	ID  int    `rac:",1"`
-	Msg string `rac:",2"`
+	UUID string `rac:"uuid,1"`
+	ID   int    `rac:",2"`
+	Msg  string `rac:",3"`
 	// Time time.Time `rac:"time,3"`
 }

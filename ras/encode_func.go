@@ -3,6 +3,7 @@ package ras
 import (
 	"encoding/binary"
 	"fmt"
+	uuid "github.com/satori/go.uuid"
 	pb "google.golang.org/protobuf/types/known/timestamppb"
 	"io"
 	"math"
@@ -28,6 +29,28 @@ func init() {
 	RegisterEncoderType("string", encodeString)
 	RegisterEncoderType("null-size", encodeNullableSize)
 	RegisterEncoderType("size", encodeSize)
+	RegisterEncoderType("uuid", encodeUuid)
+}
+
+func encodeUuid(r io.Writer, value interface{}) (int, error) {
+
+	switch val := value.(type) {
+	case []byte:
+		return writeBuf("uuid", r, val)
+	case *[]byte:
+		return writeBuf("uuid", r, *val)
+	case *uuid.UUID:
+		return writeBuf("uuid", r, val.Bytes())
+	case uuid.UUID:
+		return writeBuf("uuid", r, val.Bytes())
+	case string:
+		return writeBuf("uuid", r, uuid.FromStringOrNil(val).Bytes())
+	case *string:
+		return writeBuf("uuid", r, uuid.FromStringOrNil(*val).Bytes())
+	default:
+		return 0, &TypeEncoderError{"uuid", "unknown uuid type"}
+	}
+
 }
 
 func RegisterEncoderType(name string, dec TypeEncoderFunc) {
@@ -421,7 +444,7 @@ type EncoderWriteError struct {
 
 func (e *EncoderWriteError) Error() string {
 
-	return "ras: (encoderFunc " + e.Mame + ") " + e.err.Error() + ""
+	return "ras: (encoderFunc " + e.Mame + ") write" + e.err.Error() + ""
 }
 
 type TypeEncoderError struct {
