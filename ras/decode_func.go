@@ -3,6 +3,7 @@ package ras
 import (
 	"encoding/binary"
 	"fmt"
+	pb "google.golang.org/protobuf/types/known/timestamppb"
 	"io"
 	"math"
 	"reflect"
@@ -50,15 +51,20 @@ func decodeTime(r io.Reader, into interface{}) error {
 	}
 
 	val := binary.BigEndian.Uint64(buf)
-	timeValue := dateFromTicks(int64(val))
+	ticks := int64(val)
+	timeT := (ticks - AgeDelta) / 10
+
+	timestamp := time.Unix(0, timeT*int64(time.Millisecond)).UnixNano()
 
 	switch typed := into.(type) {
 	case *uint64:
-		*typed = uint64(timeValue.Unix())
+		*typed = uint64(timestamp)
 	case *int64:
-		*typed = timeValue.Unix()
+		*typed = timestamp
 	case *time.Time:
-		*typed = timeValue
+		*typed = time.Unix(0, timestamp)
+	case *pb.Timestamp:
+		*typed = *pb.New(time.Unix(0, timestamp))
 	default:
 		return &TypeDecodeError{"time",
 			fmt.Sprintf("decode time to <%s> unsupporsed", typed)}

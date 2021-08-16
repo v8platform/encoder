@@ -2,8 +2,11 @@ package ras
 
 import (
 	"encoding/binary"
+	"fmt"
+	pb "google.golang.org/protobuf/types/known/timestamppb"
 	"io"
 	"math"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -48,11 +51,19 @@ func encodeTime(w io.Writer, value interface{}) (int, error) {
 		val = int64(*tVal)
 	case *uint64:
 		val = int64(*tVal)
+	case time.Time:
+		val = tVal.UnixNano()
+	case *time.Time:
+		val = tVal.UnixNano()
+	case pb.Timestamp:
+		val = tVal.AsTime().UnixNano()
+	case *pb.Timestamp:
+		val = tVal.AsTime().UnixNano()
 	default:
 		return 0, &TypeEncoderError{"time", "TODO"}
 	}
-	val = val / int64(time.Millisecond)
-	ticks := val*10 + AgeDelta
+	ticks := val / int64(time.Millisecond)
+	ticks = ticks*10 + AgeDelta
 
 	return encodeUint64(w, ticks)
 
@@ -104,7 +115,7 @@ func encodeUint32(w io.Writer, value interface{}) (int, error) {
 	}
 	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, val)
-	return writeBuf("uint64", w, buf)
+	return writeBuf("uint32", w, buf)
 
 }
 
@@ -121,7 +132,7 @@ func encodeUint64(w io.Writer, value interface{}) (int, error) {
 	case *uint64:
 		val = uint64(*tVal)
 	default:
-		return 0, &TypeEncoderError{"uint64", "TODO"}
+		return 0, &TypeEncoderError{"uint64", fmt.Sprintf("%s", reflect.TypeOf(tVal))}
 	}
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, val)
@@ -159,23 +170,41 @@ func encodeFloat64(w io.Writer, value interface{}) (int, error) {
 }
 
 func encodeString(w io.Writer, value interface{}) (int, error) {
-	var val uint64
+	var val []byte
 
 	switch tVal := value.(type) {
-	case int64:
-		val = uint64(tVal)
-	case uint64:
-		val = uint64(tVal)
-	case *int64:
-		val = uint64(*tVal)
-	case *uint64:
-		val = uint64(*tVal)
+	case []byte:
+		val = tVal
+	case *[]byte:
+		val = *tVal
+	case string:
+		val = []byte(tVal)
+	case *string:
+		val = []byte(*tVal)
 	default:
-		return 0, &TypeEncoderError{"uint64", "TODO"}
+		return 0, &TypeEncoderError{"string", "TODO"}
 	}
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, val)
-	return writeBuf("uint64", w, buf)
+
+	if len(val) == 0 {
+		n, err := writeNull(w)
+		if err != nil {
+			return 0, err
+		}
+		return n, nil
+	}
+
+	size := len(val)
+	n, err := encodeNullableSize(w, size)
+	if err != nil {
+		return 0, err
+	}
+
+	bufN, err := writeBuf("string", w, val)
+	if err != nil {
+		return bufN + n, err
+	}
+
+	return bufN + n, nil
 
 }
 

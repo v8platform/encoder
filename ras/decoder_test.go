@@ -3,6 +3,7 @@ package ras
 import (
 	"bytes"
 	"github.com/k0kubun/pp"
+	pb "google.golang.org/protobuf/types/known/timestamppb"
 	"testing"
 	"time"
 )
@@ -54,10 +55,10 @@ func getTestData() []byte {
 }
 
 type Message struct {
-	Type  int     `rac:",1"`
-	Kind  int64   `rac:"int64,2"`
-	Locks []*Lock `rac:",3"`
-	Time  int64   `rac:"time,4"`
+	Type  int           `rac:",1"`
+	Kind  *int64        `rac:"int64,2"`
+	Locks []*Lock       `rac:",3"`
+	Time  *pb.Timestamp `rac:"time,4"`
 }
 
 type Lock struct {

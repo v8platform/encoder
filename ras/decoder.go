@@ -213,14 +213,27 @@ func (dec *Decoder) decodeStruct(rType reflect.Type, rValue reflect.Value, versi
 
 		if codecField.codec != "" {
 
-			if fn, ok := decoderFunc[codecField.codec]; ok {
+			if typeDecoderFunc, ok := decoderFunc[codecField.codec]; ok {
+				var iFace interface{}
 
-				iFace := f.Addr().Interface()
+				if f.Kind() == reflect.Ptr {
+					valType := f.Type()
+					valElemType := valType.Elem()
+					val := reflect.New(valElemType)
+					iFace = val.Interface()
+				} else {
+					iFace = f.Addr().Interface()
+				}
 
-				err := fn(dec.r, iFace)
+				err := typeDecoderFunc(dec.r, iFace)
 				if err != nil {
 					return err
 				}
+
+				if f.Kind() == reflect.Ptr {
+					f.Set(reflect.ValueOf(iFace))
+				}
+
 				continue
 			}
 

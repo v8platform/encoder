@@ -6,6 +6,7 @@ require (
 	github.com/k0kubun/pp v3.0.1+incompatible
 	github.com/satori/go.uuid v1.2.0
 	github.com/xelaj/go-dry v0.0.0-20210621215431-21c77821487c
+	google.golang.org/protobuf v1.27.1
 )
 
 require (

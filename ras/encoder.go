@@ -9,8 +9,8 @@ import (
 )
 
 type Encoder struct {
-	r   io.Writer
-	err error
+	writer io.Writer
+	err    error
 }
 
 // NewDecoder create new encoderFunc for version
@@ -18,14 +18,8 @@ type Encoder struct {
 func NewEncoder(r io.Writer) *Encoder {
 
 	return &Encoder{
-		r: r,
+		writer: r,
 	}
-
-}
-
-func NewDecoderToBytes(b []byte) *Encoder {
-
-	return NewEncoder(bytes.NewBuffer(b))
 
 }
 
@@ -43,14 +37,20 @@ func (e *InvalidEncodeError) Error() string {
 	if e.Type.Kind() != reflect.Ptr {
 		return "ras: Decode(non-pointer " + e.Type.String() + ")"
 	}
-	return "ras: Decode(nil " + e.Type.String() + ")"
+	return "ras: Encode(nil " + e.Type.String() + ")"
 }
 
-func Encode(data []byte, v interface{}, version int) error {
+func Encode(v interface{}, version int) ([]byte, error) {
 
-	encoder := NewDecoderToBytes(data)
+	buf := bytes.NewBuffer([]byte{})
 
-	return encoder.Encode(v, version)
+	encoder := NewEncoder(buf)
+	err := encoder.Encode(v, version)
+	if err != nil {
+		return buf.Bytes(), err
+	}
+
+	return buf.Bytes(), nil
 
 }
 
@@ -60,7 +60,7 @@ func (dec *Encoder) Encode(val interface{}, version int) error {
 		return dec.err
 	}
 
-	if val == nil || reflect.ValueOf(val).Kind() != reflect.Ptr || reflect.ValueOf(val).IsNil() {
+	if val == nil || (reflect.ValueOf(val).Kind() == reflect.Ptr && reflect.ValueOf(val).IsNil()) {
 		return &InvalidEncodeError{reflect.TypeOf(val)}
 	}
 
@@ -88,7 +88,7 @@ func (dec *Encoder) encode(rValue reflect.Value, version int) error {
 
 		switch iFace.(type) {
 		case *time.Time, time.Time:
-			_, err := encodeTime(dec.r, iFace)
+			_, err := encodeTime(dec.writer, iFace)
 			if err != nil {
 				return err
 			}
@@ -108,13 +108,13 @@ func (dec *Encoder) encode(rValue reflect.Value, version int) error {
 
 	switch rKind {
 	case reflect.Struct:
-		err = dec.decodeStruct(rType, rValue, version)
+		err = dec.encodeStruct(rType, rValue, version)
 	case reflect.Slice:
-		err = dec.decodeSlice(rValue, version)
+		err = dec.encodeSlice(rValue, version)
 	case reflect.Ptr:
-		err = dec.decodePtr(rValue, version)
+		err = dec.encodePtr(rValue, version)
 	default:
-		err = dec.decodeBasic(rType, rValue)
+		err = dec.encodeBasic(rType, rValue)
 	}
 	return err
 }
@@ -129,74 +129,61 @@ func (dec *Encoder) decodeCustom(v reflect.Value, decodeFn func() interface{}) e
 	return nil
 }
 
-func (dec *Encoder) decodeBasic(rType reflect.Type, v reflect.Value) error {
+func (dec *Encoder) encodeBasic(rType reflect.Type, v reflect.Value) error {
 
 	rKind := rType.Kind()
 
-	if !v.CanAddr() {
-		return fmt.Errorf("ras: cannot addr for value: %s", v.String())
-	}
-
-	iFace := v.Addr().Interface()
+	iFace := v.Interface()
 
 	switch rKind {
 
 	case reflect.String:
-
-		err := decodeString(dec.r, iFace)
+		_, err := encodeString(dec.writer, iFace)
 		if err != nil {
 			return err
 		}
-
 	case reflect.Bool:
-
-		err := decodeBool(dec.r, iFace)
+		_, err := encodeBool(dec.writer, iFace)
 		if err != nil {
 			return err
 		}
-
 	case reflect.Int, reflect.Uint, reflect.Int32, reflect.Uint32:
-		err := decodeUint32(dec.r, iFace)
+		_, err := encodeUint32(dec.writer, iFace)
 		if err != nil {
 			return err
 		}
 	case reflect.Int16, reflect.Uint16:
-		err := decodeUint16(dec.r, iFace)
+		_, err := encodeUint16(dec.writer, iFace)
 		if err != nil {
 			return err
 		}
 	case reflect.Int64, reflect.Uint64:
-		err := decodeUint64(dec.r, iFace)
+		_, err := encodeUint64(dec.writer, iFace)
 		if err != nil {
 			return err
 		}
 	case reflect.Int8, reflect.Uint8:
-		err := decodeByte(dec.r, iFace)
+		_, err := encodeByte(dec.writer, iFace)
 		if err != nil {
 			return err
 		}
 	case reflect.Float32:
-
-		err := decodeFloat32(dec.r, iFace)
+		_, err := encodeFloat32(dec.writer, iFace)
 		if err != nil {
 			return err
 		}
-
 	case reflect.Float64:
-		err := decodeFloat32(dec.r, iFace)
+		_, err := encodeFloat64(dec.writer, iFace)
 		if err != nil {
 			return err
 		}
-
 	default:
-		// If we reached this point then we weren't able to decode it
 		return fmt.Errorf("ras: unsupported type: %s", rKind)
-
 	}
 	return nil
 }
 
-func (dec *Encoder) decodeStruct(rType reflect.Type, rValue reflect.Value, version int) error {
+func (dec *Encoder) encodeStruct(rType reflect.Type, rValue reflect.Value, version int) error {
 
 	fields := getCodecFields(rType)
 
@@ -213,11 +200,11 @@ func (dec *Encoder) decodeStruct(rType reflect.Type, rValue reflect.Value, versi
 
 		if codecField.codec != "" {
 
-			if fn, ok := decoderFunc[codecField.codec]; ok {
+			if fn, ok := encoderFunc[codecField.codec]; ok {
 
-				iFace := f.Addr().Interface()
+				iFace := f.Interface()
 
-				err := fn(dec.r, iFace)
+				_, err := fn(dec.writer, iFace)
 				if err != nil {
 					return err
 				}
@@ -227,7 +214,6 @@ func (dec *Encoder) decodeStruct(rType reflect.Type, rValue reflect.Value, versi
 			return &TypeDecodeError{codecField.codec, "not found codec func"}
 
 		}
-
 		err := dec.encode(f, version)
 		if err != nil {
 			return err
@@ -238,43 +224,36 @@ func (dec *Encoder) decodeStruct(rType reflect.Type, rValue reflect.Value, versi
 	return nil
 }
 
-func (dec *Encoder) decodePtr(value reflect.Value, version int) error {
+func (dec *Encoder) encodePtr(value reflect.Value, version int) error {
 
-	valType := value.Type()
-	valElemType := valType.Elem()
-
-	if value.CanSet() {
-		realVal := reflect.New(valElemType)
-
-		if err := dec.encode(reflect.Indirect(realVal), version); err != nil {
-			return err
-		}
-
-		value.Set(realVal)
-	} else {
-		if err := dec.encode(reflect.Indirect(value), version); err != nil {
-			return err
-		}
+	elem := value.Elem()
+	if err := dec.encode(elem, version); err != nil {
+		return err
 	}
+
 	return nil
 }
 
-func (dec *Encoder) decodeSlice(value reflect.Value, version int) error {
+func (dec *Encoder) encodeSlice(value reflect.Value, version int) error {
 
 	var size int
-	err := decodeSize(dec.r, &size)
+
+	size = value.Len()
+
+	_, err := encodeSize(dec.writer, size)
 	if err != nil {
 		return err
 	}
+
 	for i := 0; i < size; i++ {
-		elem := reflectAlloc(value.Type().Elem())
+
+		elem := value.Index(i)
 
 		err := dec.encode(elem, version)
 		if err != nil {
 			return err
 		}
 
-		value.Set(reflect.Append(value, elem))
 	}
 
 	return nil
