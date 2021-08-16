@@ -2,43 +2,34 @@ package ras
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
-	uuid "github.com/satori/go.uuid"
 	"io"
-	"math"
 	"reflect"
-	"sort"
 	"time"
 )
 
-var defaultCodecReader = NewReader()
-
 type Decoder struct {
-	r            io.Reader
-	err          error
-	codecVersion int
-	PanicOnError bool
+	r   io.Reader
+	err error
 }
 
-// NewDecoder create new decoderFunc for version
+// NewDecoder create new encoderFunc for version
 //
-func NewDecoder(r io.Reader, version int) *Decoder {
+func NewDecoder(r io.Reader) *Decoder {
 
 	return &Decoder{
-		r:            r,
-		codecVersion: version,
+		r: r,
 	}
 
 }
 
-func NewDecoderFromBytes(b []byte, version int) *Decoder {
+func NewDecoderFromBytes(b []byte) *Decoder {
 
-	return NewDecoder(bytes.NewReader(b), version)
+	return NewDecoder(bytes.NewReader(b))
 
 }
 
-// An InvalidDecodeError describes an invalid argument passed to Unmarshal.
+// An InvalidEncodeError describes an invalid argument passed to Unmarshal.
 // (The argument to Unmarshal must be a non-nil pointer.)
 type InvalidDecodeError struct {
 	Type reflect.Type
@@ -55,39 +46,15 @@ func (e *InvalidDecodeError) Error() string {
 	return "ras: Decode(nil " + e.Type.String() + ")"
 }
 
-func getCodecFields(rType reflect.Type) []CodecField {
-	if _, ok := rType.(reflect.Type); !ok {
-		rType = rType.Elem()
-	}
-
-	if rType.Kind() == reflect.Ptr {
-		rType = rType.Elem()
-	}
-	fieldsCount := rType.NumField()
-
-	var fields []CodecField
-
-	for i := 0; i < fieldsCount; i++ {
-		field := rType.Field(i)
-		tag := field.Tag.Get(TagNamespace)
-
-		codecField := unmarshalTag(tag, i, rType)
-		fields = append(fields, codecField)
-	}
-
-	sort.Slice(fields, func(i, j int) bool {
-		return fields[i].Number < fields[j].Number
-	})
-
-	return fields
-}
-
 func Decode(data []byte, v interface{}, version int) error {
-	return nil
+
+	decoder := NewDecoderFromBytes(data)
+
+	return decoder.Decode(v, version)
 
 }
 
-func (dec *Decoder) Decode(val interface{}) error {
+func (dec *Decoder) Decode(val interface{}, version int) error {
 
 	if dec.err != nil {
 		return dec.err
@@ -99,11 +66,13 @@ func (dec *Decoder) Decode(val interface{}) error {
 
 	rValue := reflect.ValueOf(val)
 
-	return dec.decodeValue(rValue)
+	return dec.decodeValue(rValue, version)
 
 }
 
-func (dec *Decoder) decodeValue(rValue reflect.Value) error {
+func (dec *Decoder) decodeValue(rValue reflect.Value, version int) error {
+
+	var err error
 
 	if dec.err != nil {
 		return dec.err
@@ -114,7 +83,19 @@ func (dec *Decoder) decodeValue(rValue reflect.Value) error {
 		rType = rType.Elem()
 	}
 
-	var err error
+	if rValue.CanAddr() {
+		iFace := rValue.Addr().Interface()
+
+		switch iFace.(type) {
+		case *time.Time:
+			err := decodeTime(dec.r, iFace)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		}
+	}
 
 	rKind := rType.Kind()
 
@@ -127,14 +108,11 @@ func (dec *Decoder) decodeValue(rValue reflect.Value) error {
 
 	switch rKind {
 	case reflect.Struct:
-		err = dec.decodeStruct(rType, rValue)
+		err = dec.decodeStruct(rType, rValue, version)
 	case reflect.Slice:
-		err = dec.decodeSlice(rType, rValue)
-	case reflect.Array:
-		panic("FIXME")
-		// err = dec.decodeArray(input, outVal)
+		err = dec.decodeSlice(rValue, version)
 	case reflect.Ptr:
-		err = dec.decodePtr(rValue)
+		err = dec.decodePtr(rValue, version)
 	default:
 		err = dec.decodeBasic(rType, rValue)
 	}
@@ -154,113 +132,71 @@ func (dec *Decoder) decodeCustom(v reflect.Value, decodeFn func() interface{}) e
 func (dec *Decoder) decodeBasic(rType reflect.Type, v reflect.Value) error {
 
 	rKind := rType.Kind()
-	val := reflect.New(v.Type())
-	iFace := val.Interface()
+
+	if !v.CanAddr() {
+		return fmt.Errorf("ras: cannot addr for value: %s", v.String())
+	}
+
+	iFace := v.Addr().Interface()
 
 	switch rKind {
 
 	case reflect.String:
 
-		err := decodeString(dec.r, &iFace)
+		err := decodeString(dec.r, iFace)
 		if err != nil {
 			return err
-		}
-
-		if v.CanSet() {
-			v.SetString(val)
 		}
 
 	case reflect.Bool:
-		var val bool
 
-		err := decodeBool(dec.r, &val)
+		err := decodeBool(dec.r, iFace)
 		if err != nil {
 			return err
 		}
 
-		if v.CanSet() {
-			v.SetBool(val)
+	case reflect.Int, reflect.Uint, reflect.Int32, reflect.Uint32:
+		err := decodeUint32(dec.r, iFace)
+		if err != nil {
+			return err
 		}
-
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return dec.decodeBasicInt(rKind, v)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return dec.decodeBasicUint(rKind, v)
+	case reflect.Int16, reflect.Uint16:
+		err := decodeUint16(dec.r, iFace)
+		if err != nil {
+			return err
+		}
+	case reflect.Int64, reflect.Uint64:
+		err := decodeUint64(dec.r, iFace)
+		if err != nil {
+			return err
+		}
+	case reflect.Int8, reflect.Uint8:
+		err := decodeByte(dec.r, iFace)
+		if err != nil {
+			return err
+		}
 	case reflect.Float32:
-		var val float64
 
-		err := decodeFloat32(dec.r, &val)
+		err := decodeFloat32(dec.r, iFace)
 		if err != nil {
 			return err
 		}
 
-		if v.CanSet() {
-			v.SetFloat(val)
-		}
 	case reflect.Float64:
-		var val float64
-
-		err := decodeFloat32(dec.r, &val)
+		err := decodeFloat32(dec.r, iFace)
 		if err != nil {
 			return err
 		}
 
-		if v.CanSet() {
-			v.SetFloat(val)
-		}
 	default:
 		// If we reached this point then we weren't able to decode it
 		return fmt.Errorf("ras: unsupported type: %s", rKind)
+
 	}
 	return nil
 }
 
-func reflectAlloc(typ reflect.Type) reflect.Value {
-	if typ.Kind() == reflect.Ptr {
-		return reflect.New(typ.Elem())
-	}
-	return reflect.New(typ).Elem()
-}
-
-func (dec *Decoder) decodeBasicInt(kind reflect.Kind, value reflect.Value) error {
-
-	val := reflect.New(value.Type())
-	iFace := val.Interface()
-
-	switch kind {
-	case reflect.Int, reflect.Int32, reflect.Uint32:
-		err := decodeUint32(dec.r, &iFace)
-		if err != nil {
-			return err
-		}
-	case reflect.Int8:
-	case reflect.Int16:
-	case reflect.Int64:
-	default:
-		return &InvalidDecodeError{value.Type()}
-	}
-
-	if value.CanSet() {
-		value.Set(val)
-	}
-
-	return nil
-}
-
-func (dec *Decoder) decodeBasicUint(kind reflect.Kind, value reflect.Value) error {
-	switch kind {
-	case reflect.Uint:
-	case reflect.Uint8:
-	case reflect.Uint16:
-	case reflect.Uint32:
-	case reflect.Uint64:
-	default:
-		return &InvalidDecodeError{value.Type()}
-	}
-	return nil
-}
-
-func (dec *Decoder) decodeStruct(rType reflect.Type, rValue reflect.Value) error {
+func (dec *Decoder) decodeStruct(rType reflect.Type, rValue reflect.Value, version int) error {
 
 	fields := getCodecFields(rType)
 
@@ -269,11 +205,15 @@ func (dec *Decoder) decodeStruct(rType reflect.Type, rValue reflect.Value) error
 			continue
 		}
 
+		if codecField.Version > version {
+			continue
+		}
+
 		f := rValue.Field(codecField.fieldIdx)
 
-		if codecField.decoder != "" {
+		if codecField.codec != "" {
 
-			if fn, ok := decoderFunc[codecField.decoder]; ok {
+			if fn, ok := decoderFunc[codecField.codec]; ok {
 
 				iFace := f.Addr().Interface()
 
@@ -281,17 +221,16 @@ func (dec *Decoder) decodeStruct(rType reflect.Type, rValue reflect.Value) error
 				if err != nil {
 					return err
 				}
-
-				return nil
-			} else {
-				return &TypeDecodeError{codecField.decoder, "not found decoder func"}
+				continue
 			}
 
-		} else {
-			err := dec.decodeValue(f)
-			if err != nil {
-				return err
-			}
+			return &TypeDecodeError{codecField.codec, "not found codec func"}
+
+		}
+
+		err := dec.decodeValue(f, version)
+		if err != nil {
+			return err
 		}
 
 	}
@@ -299,7 +238,7 @@ func (dec *Decoder) decodeStruct(rType reflect.Type, rValue reflect.Value) error
 	return nil
 }
 
-func (dec *Decoder) decodePtr(value reflect.Value) error {
+func (dec *Decoder) decodePtr(value reflect.Value, version int) error {
 
 	valType := value.Type()
 	valElemType := valType.Elem()
@@ -307,27 +246,30 @@ func (dec *Decoder) decodePtr(value reflect.Value) error {
 	if value.CanSet() {
 		realVal := reflect.New(valElemType)
 
-		if err := dec.decodeValue(reflect.Indirect(realVal)); err != nil {
+		if err := dec.decodeValue(reflect.Indirect(realVal), version); err != nil {
 			return err
 		}
 
 		value.Set(realVal)
 	} else {
-		if err := dec.decodeValue(reflect.Indirect(value)); err != nil {
+		if err := dec.decodeValue(reflect.Indirect(value), version); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (dec *Decoder) decodeSlice(rType reflect.Type, value reflect.Value) error {
+func (dec *Decoder) decodeSlice(value reflect.Value, version int) error {
 
-	size := dec.decodeSize()
-
+	var size int
+	err := decodeSize(dec.r, &size)
+	if err != nil {
+		return err
+	}
 	for i := 0; i < size; i++ {
 		elem := reflectAlloc(value.Type().Elem())
 
-		err := dec.decodeValue(elem)
+		err := dec.decodeValue(elem, version)
 		if err != nil {
 			return err
 		}
@@ -336,4 +278,11 @@ func (dec *Decoder) decodeSlice(rType reflect.Type, value reflect.Value) error {
 	}
 
 	return nil
+}
+
+func reflectAlloc(typ reflect.Type) reflect.Value {
+	if typ.Kind() == reflect.Ptr {
+		return reflect.New(typ.Elem())
+	}
+	return reflect.New(typ).Elem()
 }

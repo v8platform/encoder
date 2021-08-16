@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -17,10 +18,10 @@ func init() {
 	RegisterDecoderType("time", decodeTime)
 	RegisterDecoderType("type", decodeType)
 	RegisterDecoderType("bool", decodeBool)
-	RegisterDecoderType("byte", decodeByte)
+	RegisterDecoderType("byte int8 uint8", decodeByte)
 	RegisterDecoderType("char short int16 uint16", decodeUint16)
 	RegisterDecoderType("int int32 uint32", decodeUint32)
-	RegisterDecoderType("int64 uint64", decodeUint64)
+	RegisterDecoderType("int64 uint64 long", decodeUint64)
 	RegisterDecoderType("float32", decodeFloat32)
 	RegisterDecoderType("float64 double", decodeFloat64)
 	RegisterDecoderType("string", decodeString)
@@ -84,7 +85,7 @@ func decodeType(r io.Reader, into interface{}) error {
 		*typed = cur
 	default:
 		return &TypeDecodeError{"type",
-			fmt.Sprintf("decode byte to <%s> unsupporsed", typed)}
+			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
 	return nil
 }
@@ -104,6 +105,8 @@ func decodeByte(r io.Reader, into interface{}) error {
 	switch typed := into.(type) {
 	case *byte:
 		*typed = b1
+	case *int8:
+		*typed = int8(b1)
 	default:
 		return &TypeDecodeError{"byte",
 			fmt.Sprintf("decode byte to <%s> unsupporsed", typed)}
@@ -214,7 +217,7 @@ func decodeUint32(r io.Reader, into interface{}) error {
 		*typed = int64(val)
 	default:
 		return &TypeDecodeError{"uint32",
-			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
+			fmt.Sprintf("convert to <%s> unsupporsed", reflect.TypeOf(typed))}
 	}
 	return nil
 
@@ -488,5 +491,5 @@ func (e *TypeDecodeError) Error() string {
 	// if e.Type.Kind() != reflect.Ptr {
 	// 	return "ras: Decode(non-pointer " + e.Type.String() + ")"
 	// }
-	return "ras: (decoderFunc " + e.Mame + ") " + e.Msg + ""
+	return "ras: (encoderFunc " + e.Mame + ") " + e.Msg + ""
 }

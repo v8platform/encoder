@@ -10,9 +10,9 @@ import (
 
 var _ CodecReader = (*reader)(nil)
 
-// NewReader returns a new decoderFunc that reads from r.
+// NewReader returns a new encoderFunc that reads from r.
 //
-// The decoderFunc introduces its own buffering and may
+// The encoderFunc introduces its own buffering and may
 // read data from r beyond the JSON values requested.
 func NewReader() CodecReader {
 	return &reader{}

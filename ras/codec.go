@@ -40,7 +40,7 @@ var (
 func NewCodec(options *CodecOptions) Codec {
 
 	// codec := &codec{}
-	// codec.e = &encoder{codec: codec, PanicOnError: true}
+	// codec.e = &encode{codec: codec, PanicOnError: true}
 	// codec.d = &reader{codec: codec, PanicOnError: true}
 
 	return &codec{}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/k0kubun/pp"
 	"testing"
+	"time"
 )
 
 func TestDecoder_Decode(t *testing.T) {
@@ -23,8 +24,8 @@ func TestDecoder_Decode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dec := NewDecoderFromBytes(tt.buf, 1)
-			if err := dec.Decode(tt.value); (err != nil) != tt.wantErr {
+			dec := NewDecoderFromBytes(tt.buf)
+			if err := dec.Decode(tt.value, 1); (err != nil) != tt.wantErr {
 				t.Errorf("Decode() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
@@ -47,14 +48,16 @@ func getTestData() []byte {
 	codec.Int32(2, buf)
 	codec.String("Блокировка 2", buf)
 	// codec.Time(time.Now().AddDate(0, 0, 30), buf)
+	codec.Time(time.Now().AddDate(0, -1, 9), buf)
 
 	return buf.Bytes()
 }
 
 type Message struct {
 	Type  int     `rac:",1"`
-	Kind  int64   `rac:"uint64,2"`
+	Kind  int64   `rac:"int64,2"`
 	Locks []*Lock `rac:",3"`
+	Time  int64   `rac:"time,4"`
 }
 
 type Lock struct {

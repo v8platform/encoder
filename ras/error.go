@@ -13,6 +13,6 @@ type DecoderError struct {
 
 func (e *DecoderError) Error() string {
 
-	return fmt.Sprintf("decoderFunc: fn<%s> err<%s>", e.fn, e.err.Error())
+	return fmt.Sprintf("encoderFunc: fn<%s> err<%s>", e.fn, e.err.Error())
 
 }

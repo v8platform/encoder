@@ -1,291 +1,281 @@
 package ras
 
 import (
-	"encoding/binary"
-	uuid "github.com/satori/go.uuid"
-	"github.com/xelaj/go-dry"
+	"bytes"
+	"fmt"
 	"io"
-	"math"
+	"reflect"
 	"time"
 )
 
-// var _ Encoder = (*encoder)(nil)
-
-type encoder struct {
-	codec        Codec
-	PanicOnError bool
+type Encoder struct {
+	r   io.Writer
+	err error
 }
 
-func (e *encoder) EndpointId(val int, w io.Writer) {
-	e.NullableSize(val, w)
+// NewDecoder create new encoderFunc for version
+//
+func NewEncoder(r io.Writer) *Encoder {
+
+	return &Encoder{
+		r: r,
+	}
+
 }
 
-func (e *encoder) Value(val interface{}, w io.Writer) {
+func NewDecoderToBytes(b []byte) *Encoder {
 
-	switch typed := val.(type) {
+	return NewEncoder(bytes.NewBuffer(b))
 
-	case bool:
-		e.Bool(typed, w)
-	case float32:
-		e.Float32(typed, w)
-	case float64:
-		e.Float64(typed, w)
-	case int:
-		e.Int(typed, w)
-	case uint:
-		e.Uint(typed, w)
-	case int16:
-		e.Int16(typed, w)
-	case uint16:
-		e.Uint16(typed, w)
-	case int32:
-		e.Int32(typed, w)
-	case uint32:
-		e.Uint32(typed, w)
-	case int64:
-		e.Int64(typed, w)
-	case uint64:
-		e.Uint64(typed, w)
-	case string:
-		e.String(typed, w)
-	case byte:
-		e.Byte(typed, w)
-	case time.Time:
-		e.Time(typed, w)
+}
+
+// An InvalidEncodeError describes an invalid argument passed to Unmarshal.
+// (The argument to Unmarshal must be a non-nil pointer.)
+type InvalidEncodeError struct {
+	Type reflect.Type
+}
+
+func (e *InvalidEncodeError) Error() string {
+	if e.Type == nil {
+		return "ras: Decode(nil)"
+	}
+
+	if e.Type.Kind() != reflect.Ptr {
+		return "ras: Decode(non-pointer " + e.Type.String() + ")"
+	}
+	return "ras: Decode(nil " + e.Type.String() + ")"
+}
+
+func Encode(data []byte, v interface{}, version int) error {
+
+	encoder := NewDecoderToBytes(data)
+
+	return encoder.Encode(v, version)
+
+}
+
+func (dec *Encoder) Encode(val interface{}, version int) error {
+
+	if dec.err != nil {
+		return dec.err
+	}
+
+	if val == nil || reflect.ValueOf(val).Kind() != reflect.Ptr || reflect.ValueOf(val).IsNil() {
+		return &InvalidEncodeError{reflect.TypeOf(val)}
+	}
+
+	rValue := reflect.ValueOf(val)
+
+	return dec.encode(rValue, version)
+
+}
+
+func (dec *Encoder) encode(rValue reflect.Value, version int) error {
+
+	var err error
+
+	if dec.err != nil {
+		return dec.err
+	}
+
+	rType := rValue.Type()
+	if _, ok := rType.(reflect.Type); !ok {
+		rType = rType.Elem()
+	}
+
+	if rValue.CanAddr() {
+		iFace := rValue.Addr().Interface()
+
+		switch iFace.(type) {
+		case *time.Time, time.Time:
+			_, err := encodeTime(dec.r, iFace)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		}
+	}
+
+	rKind := rType.Kind()
+
+	if rType.Implements(marshalerType) {
+
+		panic("FIXME")
+
+		return err
+	}
+
+	switch rKind {
+	case reflect.Struct:
+		err = dec.decodeStruct(rType, rValue, version)
+	case reflect.Slice:
+		err = dec.decodeSlice(rValue, version)
+	case reflect.Ptr:
+		err = dec.decodePtr(rValue, version)
 	default:
-		dry.PanicIf(true, "errow encode typed value")
+		err = dec.decodeBasic(rType, rValue)
+	}
+	return err
+}
+
+func (dec *Encoder) decodeCustom(v reflect.Value, decodeFn func() interface{}) error {
+
+	value := decodeFn()
+	if v.CanSet() {
+		v.Set(reflect.ValueOf(value))
 	}
 
+	return nil
 }
 
-func (e *encoder) Time(val time.Time, w io.Writer) {
+func (dec *Encoder) decodeBasic(rType reflect.Type, v reflect.Value) error {
 
-	ticks := dateToTicks(val)
-	e.Long(ticks, w)
+	rKind := rType.Kind()
 
-}
-
-func (e *encoder) Codec() Codec {
-	return e.codec
-}
-
-func (e *encoder) Bool(val bool, w io.Writer) {
-	if val {
-		e.write(w, []byte{TRUE_BYTE})
-	} else {
-		e.write(w, []byte{FALSE_BYTE})
-	}
-}
-
-func (e *encoder) Byte(val byte, w io.Writer) {
-
-	e.write(w, []byte{val})
-
-}
-
-func (e *encoder) Char(val int, w io.Writer) {
-
-	buf := make([]byte, 2)
-	binary.BigEndian.PutUint16(buf, uint16(val))
-	e.write(w, buf)
-}
-
-func (e *encoder) Short(val int16, w io.Writer) {
-	e.Int16(val, w)
-}
-
-func (e *encoder) Int(val int, w io.Writer) {
-	e.Uint32(uint32(val), w)
-}
-
-func (e *encoder) Uint(val uint, w io.Writer) {
-
-	e.Uint32(uint32(val), w)
-}
-
-func (e *encoder) Int16(val int16, w io.Writer) {
-	e.Uint16(uint16(val), w)
-}
-
-func (e *encoder) Uint16(val uint16, w io.Writer) {
-
-	buf := make([]byte, 2)
-	binary.BigEndian.PutUint16(buf, val)
-	e.write(w, buf)
-
-}
-
-func (e *encoder) Int32(val int32, w io.Writer) {
-	e.Uint32(uint32(val), w)
-}
-
-func (e *encoder) Uint32(val uint32, w io.Writer) {
-	buf := make([]byte, 4)
-	binary.BigEndian.PutUint32(buf, val)
-	e.write(w, buf)
-}
-
-func (e *encoder) Int64(val int64, w io.Writer) {
-	e.Uint64(uint64(val), w)
-}
-
-func (e *encoder) Uint64(val uint64, w io.Writer) {
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, val)
-	e.write(w, buf)
-}
-
-func (e *encoder) Long(val int64, w io.Writer) {
-	e.Uint64(uint64(val), w)
-}
-
-func (e *encoder) Float32(val float32, w io.Writer) {
-	e.Uint32(math.Float32bits(val), w)
-}
-
-func (e *encoder) Float64(val float64, w io.Writer) {
-	e.Uint64(math.Float64bits(val), w)
-}
-
-func (e *encoder) Double(val float64, w io.Writer) {
-	e.Float64(val, w)
-}
-
-func (e *encoder) Null(w io.Writer) {
-	//e.Byte(NULL_BYTE, w)
-	e.Byte(0x00, w)
-}
-
-func (e *encoder) String(val string, w io.Writer) {
-	if len(val) == 0 {
-		e.Null(w)
-		return
+	if !v.CanAddr() {
+		return fmt.Errorf("ras: cannot addr for value: %s", v.String())
 	}
 
-	b := []byte(val)
-	e.NullableSize(len(b), w)
-	e.write(w, b)
-}
+	iFace := v.Addr().Interface()
 
-func (e *encoder) TypedValue(val interface{}, w io.Writer) {
+	switch rKind {
 
-	if val == nil {
-		e.Null(w)
-		return
-	}
+	case reflect.String:
 
-	valueType := detectType(val)
-	e.Type(byte(valueType), w)
-
-	switch valueType {
-
-	case BOOLEAN:
-		e.Bool(val.(bool), w)
-	case INT:
-		e.Int(val.(int), w)
-	case LONG:
-		e.Long(val.(int64), w)
-	case BYTE:
-		e.Byte(val.(byte), w)
-	default:
-		dry.PanicIf(true, "errow encode typed value")
-	}
-}
-
-func (e *encoder) Uuid(val uuid.UUID, w io.Writer) {
-	buf, _ := val.MarshalBinary()
-	e.write(w, buf)
-}
-
-func (e *encoder) Size(val int, w io.Writer) {
-	var b1 int
-
-	msb := val >> MAX_SHIFT
-	if msb != 0 {
-		b1 = -128
-	} else {
-		b1 = 0
-	}
-
-	e.write(w, []byte{byte(b1 | (val & 0x7F))})
-
-	for val = msb; val > 0; val = msb {
-
-		msb >>= MAX_SHIFT
-		if msb != 0 {
-			b1 = -128
-		} else {
-			b1 = 0
+		err := decodeString(dec.r, iFace)
+		if err != nil {
+			return err
 		}
 
-		e.write(w, []byte{byte(b1 | (val & 0x7F))})
+	case reflect.Bool:
 
-	}
-}
-
-func (e *encoder) NullableSize(val int, w io.Writer) {
-	var b1 int
-
-	msb := val >> NULL_SHIFT
-	if msb != 0 {
-		b1 = NULL_NEXT_MASK
-	} else {
-		b1 = 0
-	}
-
-	e.write(w, []byte{byte(b1 | (val & 0x7F))})
-
-	for val = msb; val > 0; val = msb {
-
-		msb >>= MAX_SHIFT
-		if msb != 0 {
-			b1 = NEXT_MASK
-		} else {
-			b1 = 0
+		err := decodeBool(dec.r, iFace)
+		if err != nil {
+			return err
 		}
 
-		e.write(w, []byte{byte(b1 | (val & 0x7F))})
-	}
-}
+	case reflect.Int, reflect.Uint, reflect.Int32, reflect.Uint32:
+		err := decodeUint32(dec.r, iFace)
+		if err != nil {
+			return err
+		}
+	case reflect.Int16, reflect.Uint16:
+		err := decodeUint16(dec.r, iFace)
+		if err != nil {
+			return err
+		}
+	case reflect.Int64, reflect.Uint64:
+		err := decodeUint64(dec.r, iFace)
+		if err != nil {
+			return err
+		}
+	case reflect.Int8, reflect.Uint8:
+		err := decodeByte(dec.r, iFace)
+		if err != nil {
+			return err
+		}
+	case reflect.Float32:
 
-func (e *encoder) Type(val byte, w io.Writer) {
-	if val == NULL_BYTE {
-		e.Null(w)
-		return
-	}
-	e.Byte(val, w)
-}
+		err := decodeFloat32(dec.r, iFace)
+		if err != nil {
+			return err
+		}
 
-func (e *encoder) Bytes(val []byte, w io.Writer) {
-	e.write(w, val)
-}
+	case reflect.Float64:
+		err := decodeFloat32(dec.r, iFace)
+		if err != nil {
+			return err
+		}
 
-func detectType(val interface{}) TypeInterface {
-
-	switch val.(type) {
-	case bool:
-		return BOOLEAN
-	case byte:
-		return BYTE
-	case int:
-		return INT
-	case int64:
-		return LONG
-	case uint64:
-		return LONG
 	default:
-		return BYTE
-	}
+		// If we reached this point then we weren't able to decode it
+		return fmt.Errorf("ras: unsupported type: %s", rKind)
 
+	}
+	return nil
 }
 
-func (e *encoder) panicOnError(_ int, err error) {
+func (dec *Encoder) decodeStruct(rType reflect.Type, rValue reflect.Value, version int) error {
 
-	if err != nil && e.PanicOnError {
-		panic(err)
+	fields := getCodecFields(rType)
+
+	for _, codecField := range fields {
+		if codecField.Ignore {
+			continue
+		}
+
+		if codecField.Version > version {
+			continue
+		}
+
+		f := rValue.Field(codecField.fieldIdx)
+
+		if codecField.codec != "" {
+
+			if fn, ok := decoderFunc[codecField.codec]; ok {
+
+				iFace := f.Addr().Interface()
+
+				err := fn(dec.r, iFace)
+				if err != nil {
+					return err
+				}
+				continue
+			}
+
+			return &TypeDecodeError{codecField.codec, "not found codec func"}
+
+		}
+
+		err := dec.encode(f, version)
+		if err != nil {
+			return err
+		}
+
 	}
+
+	return nil
 }
 
-func (e *encoder) write(w io.Writer, p []byte) {
-	e.panicOnError(w.Write(p))
+func (dec *Encoder) decodePtr(value reflect.Value, version int) error {
+
+	valType := value.Type()
+	valElemType := valType.Elem()
+
+	if value.CanSet() {
+		realVal := reflect.New(valElemType)
+
+		if err := dec.encode(reflect.Indirect(realVal), version); err != nil {
+			return err
+		}
+
+		value.Set(realVal)
+	} else {
+		if err := dec.encode(reflect.Indirect(value), version); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (dec *Encoder) decodeSlice(value reflect.Value, version int) error {
+
+	var size int
+	err := decodeSize(dec.r, &size)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < size; i++ {
+		elem := reflectAlloc(value.Type().Elem())
+
+		err := dec.encode(elem, version)
+		if err != nil {
+			return err
+		}
+
+		value.Set(reflect.Append(value, elem))
+	}
+
+	return nil
 }
