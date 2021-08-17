@@ -3,69 +3,251 @@ package ras
 import (
 	uuid "github.com/satori/go.uuid"
 	"io"
-	"reflect"
 	"time"
 )
 
-const Version = "1.0"
-
-//goland:noinspection ALL
-const (
-	UTF8_CHARSET   = "UTF-8"
-	SIZEOF_SHORT   = 2
-	SIZEOF_INT     = 4
-	SIZEOF_LONG    = 8
-	NULL_BYTE      = 0x80
-	TRUE_BYTE      = 1
-	FALSE_BYTE     = 0
-	MAX_SHIFT      = 7
-	NULL_SHIFT     = 6
-	BYTE_MASK      = 255
-	NEXT_MASK      = -128
-	NULL_NEXT_MASK = 64
-	LAST_MASK      = 0
-	NULL_LSB_MASK  = 63
-	LSB_MASK       = 127
-	TEMP_CAPACITY  = 256
-)
-
 var _ Codec = (*codec)(nil)
+var _ CodecWriter = (*codec)(nil)
+var _ CodecReader = (*codec)(nil)
 
-var (
-	marshalerType    = reflect.TypeOf((*BinaryMarshaller)(nil)).Elem()
-	binaryParserType = reflect.TypeOf((*BinaryParser)(nil)).Elem()
-)
+func NewCodecWriter() CodecWriter {
+	return &codec{}
+}
+func NewCodecReader() CodecReader {
+	return &codec{}
+}
 
-//goland:noinspection ALL
-func NewCodec(options *CodecOptions) Codec {
-
-	// codec := &codec{}
-	// codec.e = &encode{codec: codec, PanicOnError: true}
-	// codec.d = &reader{codec: codec, PanicOnError: true}
-
+func NewCodec() Codec {
 	return &codec{}
 }
 
 //goland:noinspection ALL
-type codec struct {
-	Enc CodecReader
-	Dec Decoder
+type codec struct{}
+
+func (c *codec) ReadBoolPtr(val *bool, reader io.Reader) (n int, err error) {
+	return decodeBool(reader, val)
 }
 
-func (c *codec) Decode(v interface{}, reader io.Reader) error {
-	panic("implement me")
+func (c *codec) ReadBool(reader io.Reader) (val bool, n int, err error) {
+	n, err = c.ReadBoolPtr(&val, reader)
+	return
 }
 
-func (c *codec) Encode(v interface{}, writer io.Writer) error {
-	panic("implement me")
+func (c *codec) ReadBytePtr(val *byte, reader io.Reader) (n int, err error) {
+	return decodeByte(reader, val)
 }
 
-func (c *codec) Unmarshal(v interface{}, reader io.Reader) error {
-	panic("implement me")
+func (c *codec) ReadByte(reader io.Reader) (val byte, n int, err error) {
+	n, err = c.ReadBytePtr(&val, reader)
+	return
 }
 
-func (c *codec) Marshal(v interface{}, writer io.Writer) error {
-	panic("implement me")
+func (c *codec) ReadIntPtr(val *int, reader io.Reader) (n int, err error) {
+	return decodeUint32(reader, val)
+}
+
+func (c *codec) ReadInt(reader io.Reader) (val int, n int, err error) {
+	n, err = c.ReadIntPtr(&val, reader)
+	return
+}
+
+func (c *codec) ReadUintPtr(val *uint, reader io.Reader) (n int, err error) {
+	return decodeUint32(reader, val)
+}
+
+func (c *codec) ReadUint(reader io.Reader) (val uint, n int, err error) {
+	n, err = c.ReadUintPtr(&val, reader)
+	return
+}
+func (c *codec) ReadUint16Ptr(val *uint16, reader io.Reader) (n int, err error) {
+	return decodeUint16(reader, val)
+}
+
+func (c *codec) ReadUint16(reader io.Reader) (val uint16, n int, err error) {
+	n, err = c.ReadUint16Ptr(&val, reader)
+	return
+}
+
+func (c *codec) ReadInt32Ptr(val *int32, reader io.Reader) (n int, err error) {
+	return decodeUint32(reader, val)
+}
+
+func (c *codec) ReadInt32(reader io.Reader) (val int32, n int, err error) {
+	n, err = c.ReadInt32Ptr(&val, reader)
+	return
+}
+
+func (c *codec) ReadUint32Ptr(val *uint32, reader io.Reader) (n int, err error) {
+	return decodeUint32(reader, val)
+}
+
+func (c *codec) ReadUint32(reader io.Reader) (val uint32, n int, err error) {
+	n, err = c.ReadUint32Ptr(&val, reader)
+	return
+}
+
+func (c *codec) ReadInt64Ptr(val *int64, reader io.Reader) (n int, err error) {
+	return decodeUint64(reader, val)
+}
+
+func (c *codec) ReadInt64(reader io.Reader) (val int64, n int, err error) {
+	n, err = c.ReadInt64Ptr(&val, reader)
+	return
+}
+
+func (c *codec) ReadUint64Ptr(val *uint64, reader io.Reader) (n int, err error) {
+	return decodeUint64(reader, val)
+}
+
+func (c *codec) ReadUint64(reader io.Reader) (val uint64, n int, err error) {
+	n, err = c.ReadUint64Ptr(&val, reader)
+	return
+}
+
+func (c *codec) ReadFloat32Ptr(val *float32, reader io.Reader) (n int, err error) {
+	return decodeFloat32(reader, val)
+}
+
+func (c *codec) ReadFloat32(reader io.Reader) (val float32, n int, err error) {
+	n, err = c.ReadFloat32Ptr(&val, reader)
+	return
+}
+
+func (c *codec) ReadFloat64Ptr(val *float64, reader io.Reader) (n int, err error) {
+	return decodeFloat64(reader, val)
+}
+
+func (c *codec) ReadFloat64(reader io.Reader) (val float64, n int, err error) {
+	n, err = c.ReadFloat64Ptr(&val, reader)
+	return
+}
+
+func (c *codec) ReadStringPtr(val *string, reader io.Reader) (n int, err error) {
+	return decodeString(reader, val)
+}
+
+func (c *codec) ReadString(reader io.Reader) (val string, n int, err error) {
+	n, err = c.ReadStringPtr(&val, reader)
+	return
+}
+
+func (c *codec) ReadUuidPtr(val interface{}, reader io.Reader) (n int, err error) {
+	return decodeUUID(reader, val)
+}
+
+func (c *codec) ReadUuid(reader io.Reader) (val uuid.UUID, n int, err error) {
+	n, err = c.ReadUuidPtr(&val, reader)
+	return
+}
+func (c *codec) ReadSizePtr(val interface{}, reader io.Reader) (n int, err error) {
+	return decodeSize(reader, val)
+}
+
+func (c *codec) ReadSize(reader io.Reader) (val int, n int, err error) {
+	n, err = c.ReadUuidPtr(&val, reader)
+	return
+}
+
+func (c *codec) ReadNullableSizePtr(val interface{}, reader io.Reader) (n int, err error) {
+	return decodeNullableSize(reader, val)
+}
+func (c *codec) ReadNullableSize(reader io.Reader) (val int, n int, err error) {
+	n, err = c.ReadNullableSizePtr(&val, reader)
+	return
+}
+
+func (c *codec) ReadTypePtr(val *byte, reader io.Reader) (n int, err error) {
+	return decodeType(reader, val)
+}
+
+func (c *codec) ReadType(reader io.Reader) (val byte, n int, err error) {
+	n, err = c.ReadTypePtr(&val, reader)
+	return
+}
+
+func (c *codec) ReadTimePtr(val interface{}, reader io.Reader) (n int, err error) {
+	return decodeTime(reader, val)
+}
+
+func (c *codec) ReadTime(reader io.Reader) (val time.Time, n int, err error) {
+	n, err = c.ReadTimePtr(&val, reader)
+	return
+}
+
+func (c *codec) WriteBool(val bool, writer io.Writer) (n int, err error) {
+	return encodeBool(writer, val)
+}
+
+func (c *codec) WriteByte(val byte, writer io.Writer) (n int, err error) {
+	return encodeByte(writer, val)
+}
+
+func (c *codec) WriteInt(val int, writer io.Writer) (n int, err error) {
+	return encodeUint32(writer, val)
+}
+
+func (c *codec) WriteUint(val uint, writer io.Writer) (n int, err error) {
+	return encodeUint32(writer, val)
+}
+
+func (c *codec) WriteInt16(val int16, writer io.Writer) (n int, err error) {
+	return encodeUint16(writer, val)
+}
+
+func (c *codec) WriteUint16(val uint16, writer io.Writer) (n int, err error) {
+	return encodeUint16(writer, val)
+}
+
+func (c *codec) WriteInt32(val int32, writer io.Writer) (n int, err error) {
+	return encodeUint32(writer, val)
+}
+
+func (c *codec) WriteUint32(val uint32, writer io.Writer) (n int, err error) {
+	return encodeUint32(writer, val)
+}
+
+func (c *codec) WriteInt64(val int64, writer io.Writer) (n int, err error) {
+	return encodeUint64(writer, val)
+}
+
+func (c *codec) WriteUint64(val uint64, writer io.Writer) (n int, err error) {
+	return encodeUint64(writer, val)
+}
+
+func (c *codec) WriteFloat32(val float32, writer io.Writer) (n int, err error) {
+	return encodeFloat32(writer, val)
+}
+
+func (c *codec) WriteFloat64(val float64, writer io.Writer) (n int, err error) {
+	return encodeFloat64(writer, val)
+}
+
+func (c *codec) WriteNull(writer io.Writer) (n int, err error) {
+	return writeNull(writer)
+}
+
+func (c *codec) WriteString(val string, writer io.Writer) (n int, err error) {
+	return encodeString(writer, val)
+}
+
+func (c *codec) WriteUuid(val interface{}, writer io.Writer) (n int, err error) {
+	return encodeUuid(writer, val)
+}
+
+func (c *codec) WriteSize(val int, writer io.Writer) (n int, err error) {
+	return encodeSize(writer, val)
+}
+
+func (c *codec) WriteNullableSize(val int, writer io.Writer) (n int, err error) {
+	return encodeNullableSize(writer, val)
+}
+
+func (c *codec) WriteType(val byte, writer io.Writer) (n int, err error) {
+	return encodeType(writer, val)
+}
+
+func (c *codec) WriteTime(val interface{}, writer io.Writer) (n int, err error) {
+	return encodeTime(writer, val)
 }
 
 func (c *codec) Version() int {
@@ -73,129 +255,84 @@ func (c *codec) Version() int {
 }
 
 type Codec interface {
-	Decode(v interface{}, reader io.Reader) error
-	Encode(v interface{}, writer io.Writer) error
+	CodecWriter
+	CodecReader
 	Version() int
-}
-
-type Endpoint interface {
-	Version() int
-}
-
-type BinaryMarshaller interface {
-	Format(codec CodecReader, endpoint Endpoint) ([]byte, error)
-}
-
-type BinaryWriter interface {
-	Format(codec CodecWriter, version int, writer io.Writer)
-}
-
-type BinaryParser interface {
-	Parse(codec Decoder, version int, reader io.Reader)
 }
 
 type CodecWriter interface {
-	Bool(val bool, w io.Writer)
-	Byte(val byte, w io.Writer)
-	Char(val int, w io.Writer)
-	Short(val int16, w io.Writer)
-	Int(val int, w io.Writer)
-	Uint(val uint, w io.Writer)
-	Int16(val int16, w io.Writer)
-	Uint16(val uint16, w io.Writer)
-	Int32(val int32, w io.Writer)
-	Uint32(val uint32, w io.Writer)
-	Int64(val int64, w io.Writer)
-	Uint64(val uint64, w io.Writer)
-	// Long is copy og Int64
-	Long(val int64, w io.Writer)
-	Float32(val float32, w io.Writer)
-	Float64(val float64, w io.Writer)
-	// Double is copy og Float64
-	Double(val float64, w io.Writer)
+	WriteBool(val bool, writer io.Writer) (n int, err error)
+	WriteByte(val byte, writer io.Writer) (n int, err error)
+	WriteInt(val int, writer io.Writer) (n int, err error)
+	WriteUint(val uint, writer io.Writer) (n int, err error)
+	WriteInt16(val int16, writer io.Writer) (n int, err error)
+	WriteUint16(val uint16, writer io.Writer) (n int, err error)
+	WriteInt32(val int32, writer io.Writer) (n int, err error)
+	WriteUint32(val uint32, writer io.Writer) (n int, err error)
+	WriteInt64(val int64, writer io.Writer) (n int, err error)
+	WriteUint64(val uint64, writer io.Writer) (n int, err error)
+	WriteFloat32(val float32, writer io.Writer) (n int, err error)
+	WriteFloat64(val float64, writer io.Writer) (n int, err error)
 
-	Null(w io.Writer)
-	String(val string, w io.Writer)
-	TypedValue(val interface{}, w io.Writer)
-	Uuid(val uuid.UUID, w io.Writer)
-	Size(val int, w io.Writer)
-	NullableSize(val int, w io.Writer)
-	Type(val byte, w io.Writer)
-	EndpointId(val int, w io.Writer)
-	Time(val time.Time, w io.Writer)
-	// Bytes is alias ByteArray
-	Bytes(val []byte, w io.Writer)
-	Value(val interface{}, w io.Writer)
+	WriteNull(writer io.Writer) (n int, err error)
+	WriteString(val string, writer io.Writer) (n int, err error)
+
+	WriteUuid(val interface{}, writer io.Writer) (n int, err error)
+	WriteSize(val int, writer io.Writer) (n int, err error)
+	WriteNullableSize(val int, writer io.Writer) (n int, err error)
+	WriteType(val byte, writer io.Writer) (n int, err error)
+	WriteTime(val interface{}, writer io.Writer) (n int, err error)
 }
 
 type CodecReader interface {
-	BoolPtr(val *bool, r io.Reader)
-	Bool(r io.Reader) (bool, bool)
+	ReadBoolPtr(val *bool, reader io.Reader) (n int, err error)
+	ReadBool(reader io.Reader) (val bool, n int, err error)
 
-	BytePtr(val *byte, r io.Reader)
-	Byte(r io.Reader) byte
+	ReadBytePtr(val *byte, reader io.Reader) (n int, err error)
+	ReadByte(reader io.Reader) (val byte, n int, err error)
 
-	CharPtr(ptr *int16, r io.Reader)
-	Char(r io.Reader) int16
+	ReadIntPtr(val *int, reader io.Reader) (n int, err error)
+	ReadInt(reader io.Reader) (val int, n int, err error)
 
-	ShortPtr(val *int16, r io.Reader)
-	Short(r io.Reader) int16
+	ReadUintPtr(val *uint, reader io.Reader) (n int, err error)
+	ReadUint(reader io.Reader) (val uint, n int, err error)
 
-	IntPtr(val *int, r io.Reader)
-	Int(r io.Reader) int
+	ReadUint16(reader io.Reader) (val uint16, n int, err error)
+	ReadUint16Ptr(ptr *uint16, reader io.Reader) (n int, err error)
 
-	UintPtr(val *uint, r io.Reader)
-	Uint(r io.Reader) uint
+	ReadInt32Ptr(val *int32, reader io.Reader) (n int, err error)
+	ReadInt32(reader io.Reader) (val int32, n int, err error)
 
-	Uint16(r io.Reader) uint16
-	Uint16Ptr(ptr *uint16, r io.Reader)
+	ReadUint32Ptr(val *uint32, reader io.Reader) (n int, err error)
+	ReadUint32(reader io.Reader) (val uint32, n int, err error)
 
-	Int32Ptr(val *int32, r io.Reader)
-	Int32(r io.Reader) int32
+	ReadInt64Ptr(val *int64, reader io.Reader) (n int, err error)
+	ReadInt64(reader io.Reader) (val int64, n int, err error)
 
-	Uint32Ptr(val *uint32, r io.Reader)
-	Uint32(r io.Reader) uint32
+	ReadUint64Ptr(val *uint64, reader io.Reader) (n int, err error)
+	ReadUint64(reader io.Reader) (val uint64, n int, err error)
 
-	Int64Ptr(val *int64, r io.Reader)
-	Int64(r io.Reader) int64
+	ReadFloat32Ptr(val *float32, reader io.Reader) (n int, err error)
+	ReadFloat32(reader io.Reader) (val float32, n int, err error)
 
-	Uint64Ptr(val *uint64, r io.Reader)
-	Uint64(r io.Reader) uint64
+	ReadFloat64Ptr(val *float64, reader io.Reader) (n int, err error)
+	ReadFloat64(reader io.Reader) (val float64, n int, err error)
 
-	// Long is copy og Int64
-	LongPtr(val *int64, r io.Reader)
-	Long(r io.Reader) int64
+	ReadStringPtr(val *string, reader io.Reader) (n int, err error)
+	ReadString(reader io.Reader) (val string, n int, err error)
 
-	Float32Ptr(val *float32, r io.Reader)
-	Float32(r io.Reader) float32
+	ReadUuidPtr(val interface{}, reader io.Reader) (n int, err error)
+	ReadUuid(reader io.Reader) (val uuid.UUID, n int, err error)
 
-	Float64Ptr(val *float64, r io.Reader)
-	Float64(r io.Reader) float64
-	// Double is copy og Float64
-	DoublePtr(val *float64, r io.Reader)
-	Double(r io.Reader) float64
+	ReadSizePtr(val interface{}, reader io.Reader) (n int, err error)
+	ReadSize(reader io.Reader) (val int, n int, err error)
 
-	Null(r io.Reader)
+	ReadNullableSizePtr(val interface{}, reader io.Reader) (n int, err error)
+	ReadNullableSize(reader io.Reader) (int, n int, err error)
 
-	StringPtr(val *string, r io.Reader)
-	String(r io.Reader) string
+	ReadTypePtr(val *byte, reader io.Reader) (n int, err error)
+	ReadType(reader io.Reader) (val byte, n int, err error)
 
-	TypedValue(val interface{}, r io.Reader)
-
-	UuidPtr(val *uuid.UUID, r io.Reader)
-	Uuid(r io.Reader) uuid.UUID
-
-	Size(r io.Reader) int
-	NullableSize(r io.Reader) int
-	Type(r io.Reader) byte
-	// Bytes is alias ByteArray
-	Bytes(val []byte, r io.Reader)
-
-	EndpointIdPtr(ptr *int, r io.Reader)
-	EndpointId(r io.Reader) int
-
-	TimePtr(ptr *time.Time, r io.Reader)
-	Time(r io.Reader) time.Time
-
-	Value(val interface{}, r io.Reader)
+	ReadTimePtr(ptr interface{}, reader io.Reader) (n int, err error)
+	ReadTime(reader io.Reader) (val time.Time, n int, err error)
 }

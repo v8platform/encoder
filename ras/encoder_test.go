@@ -61,7 +61,7 @@ func TestEncode(t *testing.T) {
 
 			var msg Message
 
-			err = Decode(tt.args.data, &msg, 1)
+			_, err = Decode(tt.args.data, &msg, 1)
 			if err != nil {
 				t.Errorf("Encode() error = %v, wantErr %v", err, tt.wantErr)
 			}

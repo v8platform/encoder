@@ -14,7 +14,7 @@ import (
 
 var decoderFunc = map[string]TypeDecoderFunc{}
 
-type TypeDecoderFunc func(r io.Reader, into interface{}, opts ...map[string]string) error
+type TypeDecoderFunc func(r io.Reader, into interface{}, opts ...map[string]string) (int, error)
 
 func init() {
 	RegisterDecoderType("time", decodeTime)
@@ -42,16 +42,16 @@ func RegisterDecoderType(name string, dec TypeDecoderFunc) {
 	}
 }
 
-func decodeBytes(r io.Reader, into interface{}, opts ...map[string]string) error {
-	return nil
+func decodeBytes(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
+	return 0, nil
 }
 
-func decodeUUID(r io.Reader, into interface{}, opts ...map[string]string) error {
+func decodeUUID(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
 
 	buf := make([]byte, 16)
-	_, err := r.Read(buf)
+	n, err := r.Read(buf)
 	if err != nil {
-		return &TypeDecodeError{
+		return n, &TypeDecodeError{
 			"uuid",
 			err.Error(),
 		}
@@ -59,7 +59,7 @@ func decodeUUID(r io.Reader, into interface{}, opts ...map[string]string) error 
 
 	u, err := uuid.FromBytes(buf)
 	if err != nil {
-		return &TypeDecodeError{
+		return n, &TypeDecodeError{
 			"uuid",
 			err.Error(),
 		}
@@ -75,19 +75,19 @@ func decodeUUID(r io.Reader, into interface{}, opts ...map[string]string) error 
 	case *uuid.UUID:
 		*typed = u
 	default:
-		return &TypeDecodeError{"uuid",
+		return n, &TypeDecodeError{"uuid",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
 
-	return nil
+	return n, nil
 }
 
-func decodeTime(r io.Reader, into interface{}, opts ...map[string]string) error {
+func decodeTime(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
 
 	buf := make([]byte, 8)
-	_, err := r.Read(buf)
+	n, err := r.Read(buf)
 	if err != nil {
-		return &TypeDecodeError{
+		return n, &TypeDecodeError{
 			"time",
 			err.Error(),
 		}
@@ -109,18 +109,18 @@ func decodeTime(r io.Reader, into interface{}, opts ...map[string]string) error 
 	case *pb.Timestamp:
 		*typed = *pb.New(time.Unix(0, timestamp))
 	default:
-		return &TypeDecodeError{"time",
+		return n, &TypeDecodeError{"time",
 			fmt.Sprintf("decode time to <%s> unsupporsed", typed)}
 	}
-	return nil
+	return n, nil
 }
 
-func decodeType(r io.Reader, into interface{}, opts ...map[string]string) error {
+func decodeType(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
 
 	buf := make([]byte, 1)
-	_, err := r.Read(buf)
+	n, err := r.Read(buf)
 	if err != nil {
-		return &TypeDecodeError{
+		return n, &TypeDecodeError{
 			"type",
 			err.Error(),
 		}
@@ -133,17 +133,17 @@ func decodeType(r io.Reader, into interface{}, opts ...map[string]string) error 
 	case *byte:
 		*typed = cur
 	default:
-		return &TypeDecodeError{"type",
+		return n, &TypeDecodeError{"type",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
-	return nil
+	return n, nil
 }
 
-func decodeByte(r io.Reader, into interface{}, opts ...map[string]string) error {
+func decodeByte(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
 	buf := make([]byte, 1)
-	_, err := r.Read(buf)
+	n, err := r.Read(buf)
 	if err != nil {
-		return &TypeDecodeError{
+		return n, &TypeDecodeError{
 			"byte",
 			err.Error(),
 		}
@@ -157,17 +157,17 @@ func decodeByte(r io.Reader, into interface{}, opts ...map[string]string) error 
 	case *int8:
 		*typed = int8(b1)
 	default:
-		return &TypeDecodeError{"byte",
+		return n, &TypeDecodeError{"byte",
 			fmt.Sprintf("decode byte to <%s> unsupporsed", typed)}
 	}
-	return nil
+	return n, nil
 }
 
-func decodeBool(r io.Reader, into interface{}, opts ...map[string]string) error {
+func decodeBool(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
 	buf := make([]byte, 1)
-	_, err := r.Read(buf)
+	n, err := r.Read(buf)
 	if err != nil {
-		return &TypeDecodeError{
+		return n, &TypeDecodeError{
 			"bool",
 			err.Error(),
 		}
@@ -194,19 +194,19 @@ func decodeBool(r io.Reader, into interface{}, opts ...map[string]string) error 
 			*typed = 0
 		}
 	default:
-		return &TypeDecodeError{"bool",
+		return n, &TypeDecodeError{"bool",
 			fmt.Sprintf("decode byte to <%s> unsupporsed", typed)}
 	}
-	return nil
+	return n, nil
 
 }
 
-func decodeUint16(r io.Reader, into interface{}, opts ...map[string]string) error {
+func decodeUint16(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
 
 	buf := make([]byte, 2)
-	_, err := r.Read(buf)
+	n, err := r.Read(buf)
 	if err != nil {
-		return &TypeDecodeError{
+		return n, &TypeDecodeError{
 			"uint16",
 			err.Error(),
 		}
@@ -230,18 +230,18 @@ func decodeUint16(r io.Reader, into interface{}, opts ...map[string]string) erro
 	case *int64:
 		*typed = int64(val)
 	default:
-		return &TypeDecodeError{"uint16",
+		return n, &TypeDecodeError{"uint16",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
-	return nil
+	return n, nil
 
 }
 
-func decodeUint32(r io.Reader, into interface{}, opts ...map[string]string) error {
+func decodeUint32(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
 	buf := make([]byte, 4)
-	_, err := r.Read(buf)
+	n, err := r.Read(buf)
 	if err != nil {
-		return &TypeDecodeError{
+		return n, &TypeDecodeError{
 			"uint32",
 			err.Error(),
 		}
@@ -265,18 +265,18 @@ func decodeUint32(r io.Reader, into interface{}, opts ...map[string]string) erro
 	case *int64:
 		*typed = int64(val)
 	default:
-		return &TypeDecodeError{"uint32",
+		return n, &TypeDecodeError{"uint32",
 			fmt.Sprintf("convert to <%s> unsupporsed", reflect.TypeOf(typed))}
 	}
-	return nil
+	return n, nil
 
 }
 
-func decodeUint64(r io.Reader, into interface{}, opts ...map[string]string) error {
+func decodeUint64(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
 	buf := make([]byte, 8)
-	_, err := r.Read(buf)
+	n, err := r.Read(buf)
 	if err != nil {
-		return &TypeDecodeError{
+		return n, &TypeDecodeError{
 			"uint64",
 			err.Error(),
 		}
@@ -300,18 +300,18 @@ func decodeUint64(r io.Reader, into interface{}, opts ...map[string]string) erro
 	case *int64:
 		*typed = int64(val)
 	default:
-		return &TypeDecodeError{"uint64",
+		return n, &TypeDecodeError{"uint64",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
-	return nil
+	return n, nil
 
 }
 
-func decodeFloat32(r io.Reader, into interface{}, opts ...map[string]string) error {
+func decodeFloat32(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
 	buf := make([]byte, 4)
-	_, err := r.Read(buf)
+	n, err := r.Read(buf)
 	if err != nil {
-		return &TypeDecodeError{
+		return n, &TypeDecodeError{
 			"float32",
 			err.Error(),
 		}
@@ -325,18 +325,18 @@ func decodeFloat32(r io.Reader, into interface{}, opts ...map[string]string) err
 	case *float64:
 		*typed = float64(val)
 	default:
-		return &TypeDecodeError{"float32",
+		return n, &TypeDecodeError{"float32",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
-	return nil
+	return n, nil
 }
 
-func decodeFloat64(r io.Reader, into interface{}, opts ...map[string]string) error {
+func decodeFloat64(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
 
 	buf := make([]byte, 8)
-	_, err := r.Read(buf)
+	n, err := r.Read(buf)
 	if err != nil {
-		return &TypeDecodeError{
+		return n, &TypeDecodeError{
 			"float64",
 			err.Error(),
 		}
@@ -350,23 +350,26 @@ func decodeFloat64(r io.Reader, into interface{}, opts ...map[string]string) err
 	case *float64:
 		*typed = float64(val)
 	default:
-		return &TypeDecodeError{"float64",
+		return n, &TypeDecodeError{"float64",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
-	return nil
+	return n, nil
 }
 
-func decodeString(r io.Reader, into interface{}, opts ...map[string]string) error {
+func decodeString(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
 
-	var size int
-	err := decodeNullableSize(r, &size)
+	var size, total int
+
+	n, err := decodeNullableSize(r, &size)
 	if err != nil {
-		return err
+		return n, err
 	}
+	total += n
 	buf := make([]byte, size)
-	n, err := r.Read(buf)
+	nRead, err := r.Read(buf)
+	total += nRead
 	if err != nil {
-		return &TypeDecodeError{"string",
+		return total, &TypeDecodeError{"string",
 			fmt.Sprintf("read bytes<%d> err: <%s>", n, err.Error())}
 	}
 
@@ -378,45 +381,48 @@ func decodeString(r io.Reader, into interface{}, opts ...map[string]string) erro
 	case []byte:
 		copy(typed, buf)
 	default:
-		return &TypeDecodeError{"string",
+		return total, &TypeDecodeError{"string",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
 
-	return nil
+	return total, nil
 }
 
-func decodeNullableSize(r io.Reader, into interface{}, opts ...map[string]string) error {
+func decodeNullableSize(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
 
-	readByte := func(fnName string) (byte, error) {
+	readByte := func(fnName string) (int, byte, error) {
 		buf := make([]byte, 1)
-		_, err := r.Read(buf)
+		n, err := r.Read(buf)
 		if err != nil {
-			return 0, &TypeDecodeError{
+			return n, 0, &TypeDecodeError{
 				fnName,
 				err.Error(),
 			}
 		}
 		b1 := buf[0]
-		return b1, err
+		return n, b1, err
 	}
 
 	size := 0
-	b1, err := readByte("nullableSize")
+	var total int
+	n, b1, err := readByte("nullableSize")
+	total += n
 	if err != nil {
-		return err
+		return total, err
 	}
 
 	cur := int(b1 & 0xFF)
 	if (cur & 0xFFFFFF80) == 0x0 {
 		size = cur & 0x3F
 		if cur&0x40 == 0x0 {
-			return applyNullableSize(size, into)
+			return total, applyNullableSize(size, into)
 		}
 
 		shift := NULL_SHIFT
-		b1, err := readByte("nullableSize")
+		n, b1, err := readByte("nullableSize")
+		total += n
 		if err != nil {
-			return err
+			return total, err
 		}
 		cur := int(b1 & 0xFF)
 		size += (cur & 0x7F) << NULL_SHIFT
@@ -424,9 +430,10 @@ func decodeNullableSize(r io.Reader, into interface{}, opts ...map[string]string
 
 		for (cur & 0xFFFFFF80) != 0x0 {
 
-			b1, err := readByte("nullableSize")
+			n, b1, err := readByte("nullableSize")
+			total += n
 			if err != nil {
-				return err
+				return total, err
 			}
 
 			cur = int(b1 & 0xFF)
@@ -434,17 +441,17 @@ func decodeNullableSize(r io.Reader, into interface{}, opts ...map[string]string
 			shift += MAX_SHIFT
 
 		}
-		return applyNullableSize(size, into)
+		return total, applyNullableSize(size, into)
 	}
 
 	if (cur & 0x7F) != 0x0 {
-		return &TypeDecodeError{
+		return total, &TypeDecodeError{
 			"nullableSize",
 			"null expected",
 		}
 	}
 
-	return applyNullableSize(size, into)
+	return total, applyNullableSize(size, into)
 }
 
 func applyNullableSize(val int, into interface{}) error {
@@ -470,34 +477,36 @@ func applyNullableSize(val int, into interface{}) error {
 	return nil
 }
 
-func decodeSize(r io.Reader, into interface{}, opts ...map[string]string) error {
+func decodeSize(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
 
-	readByte := func(fnName string) (byte, error) {
+	readByte := func(fnName string) (int, byte, error) {
 		buf := make([]byte, 1)
-		_, err := r.Read(buf)
+		n, err := r.Read(buf)
 		if err != nil {
-			return 0, &TypeDecodeError{
+			return n, 0, &TypeDecodeError{
 				fnName,
 				err.Error(),
 			}
 		}
 		b1 := buf[0]
-		return b1, err
+		return n, b1, err
 	}
-
+	var total int
 	ff := 0xFFFFFF80
-	b1, err := readByte("size")
+	n, b1, err := readByte("size")
+	total += n
 	if err != nil {
-		return err
+		return total, err
 	}
 
 	cur := int(b1 & 0xFF)
 	size := cur & 0x7F
 	for shift := MAX_SHIFT; (cur & ff) != 0x0; {
 
-		b1, err = readByte("size")
+		n, b1, err = readByte("size")
+		total += n
 		if err != nil {
-			return err
+			return total, err
 		}
 
 		cur = int(b1 & 0xFF)
@@ -521,10 +530,10 @@ func decodeSize(r io.Reader, into interface{}, opts ...map[string]string) error 
 	case *int64:
 		*typed = int64(size)
 	default:
-		return &TypeDecodeError{"size",
+		return total, &TypeDecodeError{"size",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
-	return nil
+	return total, nil
 }
 
 type TypeDecodeError struct {

@@ -8,6 +8,19 @@ import (
 	"time"
 )
 
+var (
+	formatterType  = reflect.TypeOf((*Formatter)(nil)).Elem()
+	marshallerType = reflect.TypeOf((*Marshaller)(nil)).Elem()
+)
+
+type Formatter interface {
+	FormatRAS(version int) ([]byte, error)
+}
+
+type Marshaller interface {
+	MarshalRAS(writer io.Writer, version int) (int, error)
+}
+
 type Encoder struct {
 	writer io.Writer
 	err    error
@@ -99,7 +112,7 @@ func (dec *Encoder) encode(rValue reflect.Value, version int) error {
 
 	rKind := rType.Kind()
 
-	if rType.Implements(marshalerType) {
+	if rType.Implements(marshallerType) {
 
 		panic("FIXME")
 
