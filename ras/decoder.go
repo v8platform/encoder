@@ -3,29 +3,52 @@ package ras
 import (
 	"bytes"
 	"fmt"
+	pb "google.golang.org/protobuf/types/known/timestamppb"
 	"io"
 	"reflect"
 	"time"
 )
 
+var (
+	parserType      = reflect.TypeOf((*Parser)(nil)).Elem()
+	unmarshalerType = reflect.TypeOf((*Unmarshaler)(nil)).Elem()
+)
+
+type Parser interface {
+	ParseRAS(data []byte, version int) (n int, err error)
+}
+
+type Unmarshaler interface {
+	UnmarshalRAS(reader io.Reader, version int) (n int, err error)
+}
+
 type Decoder struct {
-	r   io.Reader
+	buf *bytes.Buffer
 	err error
+	n   int // bytes decoded
 }
 
 // NewDecoder create new encoderFunc for version
 //
-func NewDecoder(r io.Reader) *Decoder {
+func NewDecoderFromReader(r io.Reader) *Decoder {
+
+	buf := &bytes.Buffer{}
+	_, err := buf.ReadFrom(r)
+	if err != nil {
+		return nil
+	}
 
 	return &Decoder{
-		r: r,
+		buf: buf,
 	}
 
 }
 
-func NewDecoderFromBytes(b []byte) *Decoder {
+func NewDecoder(b []byte) *Decoder {
 
-	return NewDecoder(bytes.NewReader(b))
+	return &Decoder{
+		buf: bytes.NewBuffer(b),
+	}
 
 }
 
@@ -46,27 +69,29 @@ func (e *InvalidDecodeError) Error() string {
 	return "ras: Decode(nil " + e.Type.String() + ")"
 }
 
-func Decode(data []byte, v interface{}, version int) error {
+func Decode(data []byte, v interface{}, version int) (int, error) {
 
-	decoder := NewDecoderFromBytes(data)
+	decoder := NewDecoder(data)
 
 	return decoder.Decode(v, version)
 
 }
 
-func (dec *Decoder) Decode(val interface{}, version int) error {
+func (dec *Decoder) Decode(val interface{}, version int) (int, error) {
+
+	dec.n = 0
 
 	if dec.err != nil {
-		return dec.err
+		return dec.n, dec.err
 	}
 
 	if val == nil || reflect.ValueOf(val).Kind() != reflect.Ptr || reflect.ValueOf(val).IsNil() {
-		return &InvalidDecodeError{reflect.TypeOf(val)}
+		return dec.n, &InvalidDecodeError{reflect.TypeOf(val)}
 	}
 
 	rValue := reflect.ValueOf(val)
 
-	return dec.decodeValue(rValue, version)
+	return dec.n, dec.decodeValue(rValue, version)
 
 }
 
@@ -87,8 +112,9 @@ func (dec *Decoder) decodeValue(rValue reflect.Value, version int) error {
 		iFace := rValue.Addr().Interface()
 
 		switch iFace.(type) {
-		case *time.Time:
-			err := decodeTime(dec.r, iFace)
+		case *time.Time, *pb.Timestamp:
+			n, err := decodeTime(dec.buf, iFace)
+			dec.n += n
 			if err != nil {
 				return err
 			}
@@ -98,13 +124,6 @@ func (dec *Decoder) decodeValue(rValue reflect.Value, version int) error {
 	}
 
 	rKind := rType.Kind()
-
-	if rType.Implements(marshalerType) {
-
-		panic("FIXME")
-
-		return err
-	}
 
 	switch rKind {
 	case reflect.Struct:
@@ -143,47 +162,55 @@ func (dec *Decoder) decodeBasic(rType reflect.Type, v reflect.Value) error {
 
 	case reflect.String:
 
-		err := decodeString(dec.r, iFace)
+		n, err := decodeString(dec.buf, iFace)
+		dec.n += n
 		if err != nil {
 			return err
 		}
 
 	case reflect.Bool:
 
-		err := decodeBool(dec.r, iFace)
+		n, err := decodeBool(dec.buf, iFace)
+		dec.n += n
 		if err != nil {
 			return err
 		}
 
 	case reflect.Int, reflect.Uint, reflect.Int32, reflect.Uint32:
-		err := decodeUint32(dec.r, iFace)
+		n, err := decodeUint32(dec.buf, iFace)
+		dec.n += n
 		if err != nil {
 			return err
 		}
 	case reflect.Int16, reflect.Uint16:
-		err := decodeUint16(dec.r, iFace)
+		n, err := decodeUint16(dec.buf, iFace)
+		dec.n += n
 		if err != nil {
 			return err
 		}
 	case reflect.Int64, reflect.Uint64:
-		err := decodeUint64(dec.r, iFace)
+		n, err := decodeUint64(dec.buf, iFace)
+		dec.n += n
 		if err != nil {
 			return err
 		}
 	case reflect.Int8, reflect.Uint8:
-		err := decodeByte(dec.r, iFace)
+		n, err := decodeByte(dec.buf, iFace)
+		dec.n += n
 		if err != nil {
 			return err
 		}
 	case reflect.Float32:
 
-		err := decodeFloat32(dec.r, iFace)
+		n, err := decodeFloat32(dec.buf, iFace)
+		dec.n += n
 		if err != nil {
 			return err
 		}
 
 	case reflect.Float64:
-		err := decodeFloat32(dec.r, iFace)
+		n, err := decodeFloat32(dec.buf, iFace)
+		dec.n += n
 		if err != nil {
 			return err
 		}
@@ -225,7 +252,8 @@ func (dec *Decoder) decodeStruct(rType reflect.Type, rValue reflect.Value, versi
 					iFace = f.Addr().Interface()
 				}
 
-				err := typeDecoderFunc(dec.r, iFace)
+				n, err := typeDecoderFunc(dec.buf, iFace)
+				dec.n += n
 				if err != nil {
 					return err
 				}
@@ -253,29 +281,44 @@ func (dec *Decoder) decodeStruct(rType reflect.Type, rValue reflect.Value, versi
 
 func (dec *Decoder) decodePtr(value reflect.Value, version int) error {
 
-	valType := value.Type()
-	valElemType := valType.Elem()
+	un, _, rValue := indirect(value, false)
 
-	if value.CanSet() {
-		realVal := reflect.New(valElemType)
+	if un != nil {
 
-		if err := dec.decodeValue(reflect.Indirect(realVal), version); err != nil {
+		n, err := un.UnmarshalRAS(dec.buf, version)
+		dec.n += n
+		if err != nil {
 			return err
 		}
+		return nil
 
-		value.Set(realVal)
-	} else {
-		if err := dec.decodeValue(reflect.Indirect(value), version); err != nil {
-			return err
-		}
 	}
-	return nil
+
+	//
+	// valType := value.Type()
+	// valElemType := valType.Elem()
+	//
+	// if value.CanSet() {
+	// 	realVal := reflect.New(valElemType)
+	//
+	// 	if err := dec.decodeValue(reflect.Indirect(realVal), version); err != nil {
+	// 		return err
+	// 	}
+	//
+	// 	value.Set(realVal)
+	// } else {
+	// 	if err := dec.decodeValue(reflect.Indirect(value), version); err != nil {
+	// 		return err
+	// 	}
+	// }
+	return dec.decodeValue(rValue, version)
 }
 
 func (dec *Decoder) decodeSlice(value reflect.Value, version int) error {
 
 	var size int
-	err := decodeSize(dec.r, &size)
+	n, err := decodeSize(dec.buf, &size)
+	dec.n += n
 	if err != nil {
 		return err
 	}
@@ -291,6 +334,74 @@ func (dec *Decoder) decodeSlice(value reflect.Value, version int) error {
 	}
 
 	return nil
+}
+
+// indirect walks down v allocating pointers as needed,
+// until it gets to a non-pointer.
+// If it encounters an Unmarshaler, indirect stops and returns that.
+// If decodingNull is true, indirect stops at the first settable pointer so it
+// can be set to nil.
+func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, Parser, reflect.Value) {
+
+	v0 := v
+	haveAddr := false
+
+	// If v is a named type and is addressable,
+	// start with its address, so that if the type has pointer methods,
+	// we find them.
+	if v.Kind() != reflect.Ptr && v.Type().Name() != "" && v.CanAddr() {
+		haveAddr = true
+		v = v.Addr()
+	}
+	for {
+		// Load value from interface, but only if the result will be
+		// usefully addressable.
+		if v.Kind() == reflect.Interface && !v.IsNil() {
+			e := v.Elem()
+			if e.Kind() == reflect.Ptr && !e.IsNil() && (!decodingNull || e.Elem().Kind() == reflect.Ptr) {
+				haveAddr = false
+				v = e
+				continue
+			}
+		}
+
+		if v.Kind() != reflect.Ptr {
+			break
+		}
+
+		if decodingNull && v.CanSet() {
+			break
+		}
+
+		// Prevent infinite loop if v is an interface pointing to its own address:
+		//     var v interface{}
+		//     v = &v
+		if v.Elem().Kind() == reflect.Interface && v.Elem().Elem() == v {
+			v = v.Elem()
+			break
+		}
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		if v.Type().NumMethod() > 0 && v.CanInterface() {
+			if u, ok := v.Interface().(Unmarshaler); ok {
+				return u, nil, reflect.Value{}
+			}
+			if !decodingNull {
+				if u, ok := v.Interface().(Parser); ok {
+					return nil, u, reflect.Value{}
+				}
+			}
+		}
+
+		if haveAddr {
+			v = v0 // restore original value after round-trip Value.Addr().Elem()
+			haveAddr = false
+		} else {
+			v = v.Elem()
+		}
+	}
+	return nil, nil, v
 }
 
 func reflectAlloc(typ reflect.Type) reflect.Value {
