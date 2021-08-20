@@ -32,6 +32,16 @@ func init() {
 	RegisterEncoderType("uuid", encodeUuid)
 }
 
+func EncodeValue(encoder string, r io.Writer, value interface{}) (int, error) {
+
+	typeEncoderFunc, ok := encoderFunc[encoder]
+	if !ok {
+		return 0, fmt.Errorf("unknown encoder <%s>", encoder)
+	}
+
+	return typeEncoderFunc(r, value)
+}
+
 func encodeUuid(r io.Writer, value interface{}) (int, error) {
 
 	switch val := value.(type) {
