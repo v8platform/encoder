@@ -231,7 +231,7 @@ func (c *codec) WriteString(val string, writer io.Writer) (n int, err error) {
 }
 
 func (c *codec) WriteUuid(val interface{}, writer io.Writer) (n int, err error) {
-	return encodeUuid(writer, val)
+	return EncodeUuid(writer, val)
 }
 
 func (c *codec) WriteSize(val int, writer io.Writer) (n int, err error) {

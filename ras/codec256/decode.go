@@ -8,50 +8,73 @@ import (
 	"io"
 	"math"
 	"reflect"
-	"strings"
 	"time"
 )
 
-var decoderFunc = map[string]TypeDecoderFunc{}
+const (
+	UTF8_CHARSET   = "UTF-8"
+	SIZEOF_SHORT   = 2
+	SIZEOF_INT     = 4
+	SIZEOF_LONG    = 8
+	NULL_BYTE      = 0x80
+	TRUE_BYTE      = 1
+	FALSE_BYTE     = 0
+	MAX_SHIFT      = 7
+	NULL_SHIFT     = 6
+	BYTE_MASK      = 255
+	NEXT_MASK      = -128
+	NULL_NEXT_MASK = 64
+	LAST_MASK      = 0
+	NULL_LSB_MASK  = 63
+	LSB_MASK       = 127
+	TEMP_CAPACITY  = 256
+)
 
-type TypeDecoderFunc func(r io.Reader, into interface{}, opts ...map[string]string) (int, error)
+const AgeDelta = 621355968000000
 
-func init() {
-	RegisterDecoderType("time", decodeTime)
-	RegisterDecoderType("type", decodeType)
-	RegisterDecoderType("bool", decodeBool)
-	RegisterDecoderType("byte int8 uint8", decodeByte)
-	RegisterDecoderType("char short int16 uint16", decodeUint16)
-	RegisterDecoderType("int int32 uint32", decodeUint32)
-	RegisterDecoderType("int64 uint64 long", decodeUint64)
-	RegisterDecoderType("float32", decodeFloat32)
-	RegisterDecoderType("float64 double", decodeFloat64)
-	RegisterDecoderType("string", decodeString)
-	RegisterDecoderType("null-size nullable", decodeNullableSize)
-	RegisterDecoderType("size", decodeSize)
-	RegisterDecoderType("bytes", decodeBytes)
-	RegisterDecoderType("uuid", decodeUUID)
-}
+func ParseBytes(r io.Reader, data []byte) error {
 
-func RegisterDecoderType(name string, dec TypeDecoderFunc) {
+	if len(data) == 0 {
+		for {
+			// if len(data) == cap(data) {
+			// 	// Add more capacity (let append pick how much).
+			// 	data = append(data, 0)[:len(data)]
+			// }
+			_, err := r.Read(data[len(data):cap(data)])
+			// data = data[:len(data)+n]
+			if err != nil {
+				if err == io.EOF {
+					return nil
+				}
+				return err
+			}
+		}
 
-	names := strings.Fields(strings.ToLower(name))
-
-	for _, s := range names {
-		decoderFunc[s] = dec
 	}
+
+	readLength := 0
+	n := 0
+	var err error
+
+	for readLength < len(data) {
+
+		n, err = r.Read(data[readLength:])
+		readLength += n
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func decodeBytes(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
-	return 0, nil
-}
-
-func decodeUUID(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
+func ParseUUID(r io.Reader, into interface{}) error {
 
 	buf := make([]byte, 16)
-	n, err := r.Read(buf)
+	_, err := r.Read(buf)
 	if err != nil {
-		return n, &TypeDecodeError{
+		return &ParseError{
 			"uuid",
 			err.Error(),
 		}
@@ -59,7 +82,7 @@ func decodeUUID(r io.Reader, into interface{}, opts ...map[string]string) (int, 
 
 	u, err := uuid.FromBytes(buf)
 	if err != nil {
-		return n, &TypeDecodeError{
+		return &ParseError{
 			"uuid",
 			err.Error(),
 		}
@@ -75,19 +98,19 @@ func decodeUUID(r io.Reader, into interface{}, opts ...map[string]string) (int, 
 	case *uuid.UUID:
 		*typed = u
 	default:
-		return n, &TypeDecodeError{"uuid",
+		return &ParseError{"uuid",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
 
-	return n, nil
+	return nil
 }
 
-func decodeTime(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
+func ParseTime(r io.Reader, into interface{}) (int, error) {
 
 	buf := make([]byte, 8)
 	n, err := r.Read(buf)
 	if err != nil {
-		return n, &TypeDecodeError{
+		return n, &ParseError{
 			"time",
 			err.Error(),
 		}
@@ -109,18 +132,18 @@ func decodeTime(r io.Reader, into interface{}, opts ...map[string]string) (int, 
 	case *pb.Timestamp:
 		*typed = *pb.New(time.Unix(0, timestamp))
 	default:
-		return n, &TypeDecodeError{"time",
-			fmt.Sprintf("decode time to <%s> unsupporsed", typed)}
+		return n, &ParseError{"time",
+			fmt.Sprintf("Parse time to <%s> unsupporsed", typed)}
 	}
 	return n, nil
 }
 
-func decodeType(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
+func ParseType(r io.Reader, into interface{}, opts ...map[string]string) error {
 
 	buf := make([]byte, 1)
-	n, err := r.Read(buf)
+	_, err := r.Read(buf)
 	if err != nil {
-		return n, &TypeDecodeError{
+		return &ParseError{
 			"type",
 			err.Error(),
 		}
@@ -133,17 +156,17 @@ func decodeType(r io.Reader, into interface{}, opts ...map[string]string) (int, 
 	case *byte:
 		*typed = cur
 	default:
-		return n, &TypeDecodeError{"type",
-			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
+		return &ParseError{"type",
+			fmt.Sprintf("Parse type to <%s> unsupporsed", typed)}
 	}
-	return n, nil
+	return nil
 }
 
-func decodeByte(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
+func ParseByte(r io.Reader, into interface{}) error {
 	buf := make([]byte, 1)
-	n, err := r.Read(buf)
+	_, err := r.Read(buf)
 	if err != nil {
-		return n, &TypeDecodeError{
+		return &ParseError{
 			"byte",
 			err.Error(),
 		}
@@ -156,18 +179,22 @@ func decodeByte(r io.Reader, into interface{}, opts ...map[string]string) (int, 
 		*typed = b1
 	case *int8:
 		*typed = int8(b1)
+	case *int32:
+		*typed = int32(b1)
+	case *int:
+		*typed = int(b1)
 	default:
-		return n, &TypeDecodeError{"byte",
-			fmt.Sprintf("decode byte to <%s> unsupporsed", typed)}
+		return &ParseError{"byte",
+			fmt.Sprintf("Parse byte to <%s> unsupporsed", typed)}
 	}
-	return n, nil
+	return nil
 }
 
-func decodeBool(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
+func ParseBool(r io.Reader, into interface{}) error {
 	buf := make([]byte, 1)
-	n, err := r.Read(buf)
+	_, err := r.Read(buf)
 	if err != nil {
-		return n, &TypeDecodeError{
+		return &ParseError{
 			"bool",
 			err.Error(),
 		}
@@ -194,20 +221,20 @@ func decodeBool(r io.Reader, into interface{}, opts ...map[string]string) (int, 
 			*typed = 0
 		}
 	default:
-		return n, &TypeDecodeError{"bool",
-			fmt.Sprintf("decode byte to <%s> unsupporsed", typed)}
+		return &ParseError{"bool",
+			fmt.Sprintf("Parse byte to <%s> unsupporsed", typed)}
 	}
-	return n, nil
+	return nil
 
 }
 
-func decodeUint16(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
+func ParseShort(r io.Reader, into interface{}) error {
 
-	buf := make([]byte, 2)
-	n, err := r.Read(buf)
+	buf := make([]byte, SIZEOF_SHORT)
+	_, err := r.Read(buf)
 	if err != nil {
-		return n, &TypeDecodeError{
-			"uint16",
+		return &ParseError{
+			"short",
 			err.Error(),
 		}
 	}
@@ -230,19 +257,19 @@ func decodeUint16(r io.Reader, into interface{}, opts ...map[string]string) (int
 	case *int64:
 		*typed = int64(val)
 	default:
-		return n, &TypeDecodeError{"uint16",
+		return &ParseError{"uint16",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
-	return n, nil
+	return nil
 
 }
 
-func decodeUint32(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
-	buf := make([]byte, 4)
-	n, err := r.Read(buf)
+func ParseInt(r io.Reader, into interface{}) error {
+	buf := make([]byte, SIZEOF_INT)
+	_, err := r.Read(buf)
 	if err != nil {
-		return n, &TypeDecodeError{
-			"uint32",
+		return &ParseError{
+			"int32",
 			err.Error(),
 		}
 	}
@@ -265,19 +292,19 @@ func decodeUint32(r io.Reader, into interface{}, opts ...map[string]string) (int
 	case *int64:
 		*typed = int64(val)
 	default:
-		return n, &TypeDecodeError{"uint32",
+		return &ParseError{"uint32",
 			fmt.Sprintf("convert to <%s> unsupporsed", reflect.TypeOf(typed))}
 	}
-	return n, nil
+	return nil
 
 }
 
-func decodeUint64(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
-	buf := make([]byte, 8)
-	n, err := r.Read(buf)
+func ParseLong(r io.Reader, into interface{}) error {
+	buf := make([]byte, SIZEOF_LONG)
+	_, err := r.Read(buf)
 	if err != nil {
-		return n, &TypeDecodeError{
-			"uint64",
+		return &ParseError{
+			"long",
 			err.Error(),
 		}
 	}
@@ -300,18 +327,18 @@ func decodeUint64(r io.Reader, into interface{}, opts ...map[string]string) (int
 	case *int64:
 		*typed = int64(val)
 	default:
-		return n, &TypeDecodeError{"uint64",
+		return &ParseError{"uint64",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
-	return n, nil
+	return nil
 
 }
 
-func decodeFloat32(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
+func ParseFloat(r io.Reader, into interface{}) error {
 	buf := make([]byte, 4)
-	n, err := r.Read(buf)
+	_, err := r.Read(buf)
 	if err != nil {
-		return n, &TypeDecodeError{
+		return &ParseError{
 			"float32",
 			err.Error(),
 		}
@@ -321,22 +348,22 @@ func decodeFloat32(r io.Reader, into interface{}, opts ...map[string]string) (in
 
 	switch typed := into.(type) {
 	case *float32:
-		*typed = float32(val)
+		*typed = val
 	case *float64:
 		*typed = float64(val)
 	default:
-		return n, &TypeDecodeError{"float32",
+		return &ParseError{"float32",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
-	return n, nil
+	return nil
 }
 
-func decodeFloat64(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
+func ParseDouble(r io.Reader, into interface{}) error {
 
 	buf := make([]byte, 8)
-	n, err := r.Read(buf)
+	_, err := r.Read(buf)
 	if err != nil {
-		return n, &TypeDecodeError{
+		return &ParseError{
 			"float64",
 			err.Error(),
 		}
@@ -350,27 +377,25 @@ func decodeFloat64(r io.Reader, into interface{}, opts ...map[string]string) (in
 	case *float64:
 		*typed = float64(val)
 	default:
-		return n, &TypeDecodeError{"float64",
+		return &ParseError{"float64",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
-	return n, nil
+	return nil
 }
 
-func decodeString(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
+func ParseString(r io.Reader, into interface{}) error {
 
-	var size, total int
+	var size int
 
-	n, err := decodeNullableSize(r, &size)
+	err := ParseNullable(r, &size)
 	if err != nil {
-		return n, err
+		return err
 	}
-	total += n
 	buf := make([]byte, size)
-	nRead, err := r.Read(buf)
-	total += nRead
+	_, err = r.Read(buf)
 	if err != nil {
-		return total, &TypeDecodeError{"string",
-			fmt.Sprintf("read bytes<%d> err: <%s>", n, err.Error())}
+		return &ParseError{"string",
+			err.Error()}
 	}
 
 	switch typed := into.(type) {
@@ -381,20 +406,20 @@ func decodeString(r io.Reader, into interface{}, opts ...map[string]string) (int
 	case []byte:
 		copy(typed, buf)
 	default:
-		return total, &TypeDecodeError{"string",
+		return &ParseError{"string",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
 
-	return total, nil
+	return nil
 }
 
-func decodeNullableSize(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
+func ParseNullable(r io.Reader, into interface{}) error {
 
 	readByte := func(fnName string) (int, byte, error) {
 		buf := make([]byte, 1)
 		n, err := r.Read(buf)
 		if err != nil {
-			return n, 0, &TypeDecodeError{
+			return n, 0, &ParseError{
 				fnName,
 				err.Error(),
 			}
@@ -404,25 +429,23 @@ func decodeNullableSize(r io.Reader, into interface{}, opts ...map[string]string
 	}
 
 	size := 0
-	var total int
-	n, b1, err := readByte("nullableSize")
-	total += n
+	_, b1, err := readByte("nullable")
+
 	if err != nil {
-		return total, err
+		return err
 	}
 
 	cur := int(b1 & 0xFF)
 	if (cur & 0xFFFFFF80) == 0x0 {
 		size = cur & 0x3F
 		if cur&0x40 == 0x0 {
-			return total, applyNullableSize(size, into)
+			return applyNullableS(size, into)
 		}
 
 		shift := NULL_SHIFT
-		n, b1, err := readByte("nullableSize")
-		total += n
+		_, b1, err := readByte("nullable")
 		if err != nil {
-			return total, err
+			return err
 		}
 		cur := int(b1 & 0xFF)
 		size += (cur & 0x7F) << NULL_SHIFT
@@ -430,10 +453,9 @@ func decodeNullableSize(r io.Reader, into interface{}, opts ...map[string]string
 
 		for (cur & 0xFFFFFF80) != 0x0 {
 
-			n, b1, err := readByte("nullableSize")
-			total += n
+			_, b1, err := readByte("nullable")
 			if err != nil {
-				return total, err
+				return err
 			}
 
 			cur = int(b1 & 0xFF)
@@ -441,20 +463,20 @@ func decodeNullableSize(r io.Reader, into interface{}, opts ...map[string]string
 			shift += MAX_SHIFT
 
 		}
-		return total, applyNullableSize(size, into)
+		return applyNullableS(size, into)
 	}
 
 	if (cur & 0x7F) != 0x0 {
-		return total, &TypeDecodeError{
-			"nullableSize",
+		return &ParseError{
+			"nullable",
 			"null expected",
 		}
 	}
 
-	return total, applyNullableSize(size, into)
+	return applyNullableS(size, into)
 }
 
-func applyNullableSize(val int, into interface{}) error {
+func applyNullableS(val int, into interface{}) error {
 	switch typed := into.(type) {
 	case *int:
 		*typed = int(val)
@@ -471,19 +493,19 @@ func applyNullableSize(val int, into interface{}) error {
 	case *int64:
 		*typed = int64(val)
 	default:
-		return &TypeDecodeError{"nullableSize",
+		return &ParseError{"nullable",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
 	return nil
 }
 
-func decodeSize(r io.Reader, into interface{}, opts ...map[string]string) (int, error) {
+func ParseSize(r io.Reader, into interface{}) error {
 
 	readByte := func(fnName string) (int, byte, error) {
 		buf := make([]byte, 1)
 		n, err := r.Read(buf)
 		if err != nil {
-			return n, 0, &TypeDecodeError{
+			return n, 0, &ParseError{
 				fnName,
 				err.Error(),
 			}
@@ -491,22 +513,19 @@ func decodeSize(r io.Reader, into interface{}, opts ...map[string]string) (int, 
 		b1 := buf[0]
 		return n, b1, err
 	}
-	var total int
 	ff := 0xFFFFFF80
-	n, b1, err := readByte("size")
-	total += n
+	_, b1, err := readByte("size")
 	if err != nil {
-		return total, err
+		return err
 	}
 
 	cur := int(b1 & 0xFF)
 	size := cur & 0x7F
 	for shift := MAX_SHIFT; (cur & ff) != 0x0; {
 
-		n, b1, err = readByte("size")
-		total += n
+		_, b1, err = readByte("size")
 		if err != nil {
-			return total, err
+			return err
 		}
 
 		cur = int(b1 & 0xFF)
@@ -530,24 +549,17 @@ func decodeSize(r io.Reader, into interface{}, opts ...map[string]string) (int, 
 	case *int64:
 		*typed = int64(size)
 	default:
-		return total, &TypeDecodeError{"size",
+		return &ParseError{"size",
 			fmt.Sprintf("convert to <%s> unsupporsed", typed)}
 	}
-	return total, nil
+	return nil
 }
 
-type TypeDecodeError struct {
+type ParseError struct {
 	Mame string
 	Msg  string
 }
 
-func (e *TypeDecodeError) Error() string {
-	// if e.Type == nil {
-	// 	return "ras: Decode(nil)"
-	// }
-
-	// if e.Type.Kind() != reflect.Ptr {
-	// 	return "ras: Decode(non-pointer " + e.Type.String() + ")"
-	// }
-	return "ras: (decoderFunc " + e.Mame + ") " + e.Msg + ""
+func (e *ParseError) Error() string {
+	return "ras: (ParserFunc " + e.Mame + ") " + e.Msg + ""
 }
