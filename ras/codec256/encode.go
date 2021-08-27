@@ -8,41 +8,10 @@ import (
 	"io"
 	"math"
 	"reflect"
-	"strings"
 	"time"
 )
 
-var encoderFunc = map[string]TypeEncoderFunc{}
-
-type TypeEncoderFunc func(r io.Writer, value interface{}) (int, error)
-
-func init() {
-	RegisterEncoderType("time", encodeTime)
-	RegisterEncoderType("type", encodeType)
-	RegisterEncoderType("bool", encodeBool)
-	RegisterEncoderType("byte int8 uint8", encodeByte)
-	RegisterEncoderType("char short int16 uint16", encodeUint16)
-	RegisterEncoderType("int int32 uint32", encodeUint32)
-	RegisterEncoderType("int64 uint64 long", encodeUint64)
-	RegisterEncoderType("float32", encodeFloat32)
-	RegisterEncoderType("float64 double", encodeFloat64)
-	RegisterEncoderType("string", encodeString)
-	RegisterEncoderType("null-size", encodeNullableSize)
-	RegisterEncoderType("size", encodeSize)
-	RegisterEncoderType("uuid", EncodeUuid)
-}
-
-func EncodeValue(encoder string, r io.Writer, value interface{}) (int, error) {
-
-	typeEncoderFunc, ok := encoderFunc[encoder]
-	if !ok {
-		return 0, fmt.Errorf("unknown encoder <%s>", encoder)
-	}
-
-	return typeEncoderFunc(r, value)
-}
-
-func EncodeUuid(r io.Writer, value interface{}) (int, error) {
+func FormatUuid(r io.Writer, value interface{}) error {
 
 	switch val := value.(type) {
 	case []byte:
@@ -58,21 +27,12 @@ func EncodeUuid(r io.Writer, value interface{}) (int, error) {
 	case *string:
 		return writeBuf("uuid", r, uuid.FromStringOrNil(*val).Bytes())
 	default:
-		return 0, &TypeEncoderError{"uuid", "unknown uuid type"}
+		return &TypeEncoderError{"uuid", "unknown uuid type"}
 	}
 
 }
 
-func RegisterEncoderType(name string, dec TypeEncoderFunc) {
-
-	names := strings.Fields(strings.ToLower(name))
-
-	for _, s := range names {
-		encoderFunc[s] = dec
-	}
-}
-
-func encodeTime(w io.Writer, value interface{}) (int, error) {
+func FormatTime(w io.Writer, value interface{}) error {
 	var val int64
 
 	switch tVal := value.(type) {
@@ -93,16 +53,16 @@ func encodeTime(w io.Writer, value interface{}) (int, error) {
 	case *pb.Timestamp:
 		val = tVal.AsTime().UnixNano()
 	default:
-		return 0, &TypeEncoderError{"time", "TODO"}
+		return &TypeEncoderError{"time", "TODO"}
 	}
 	ticks := val / int64(time.Millisecond)
 	ticks = ticks*10 + AgeDelta
 
-	return encodeUint64(w, ticks)
+	return FormatLong(w, ticks)
 
 }
 
-func encodeUint16(w io.Writer, value interface{}) (int, error) {
+func FormatShort(w io.Writer, value interface{}) error {
 	var val uint16
 
 	switch tVal := value.(type) {
@@ -115,15 +75,15 @@ func encodeUint16(w io.Writer, value interface{}) (int, error) {
 	case *uint16:
 		val = uint16(*tVal)
 	default:
-		return 0, &TypeEncoderError{"uint16", "TODO"}
+		return &TypeEncoderError{"short", "TODO"}
 	}
-	buf := make([]byte, 2)
+	buf := make([]byte, SIZEOF_SHORT)
 	binary.BigEndian.PutUint16(buf, val)
-	return writeBuf("uint16", w, buf)
+	return writeBuf("short", w, buf)
 
 }
 
-func encodeUint32(w io.Writer, value interface{}) (int, error) {
+func FormatInt(w io.Writer, value interface{}) error {
 	var val uint32
 
 	switch tVal := value.(type) {
@@ -144,15 +104,15 @@ func encodeUint32(w io.Writer, value interface{}) (int, error) {
 	case *uint32:
 		val = uint32(*tVal)
 	default:
-		return 0, &TypeEncoderError{"uint32", "TODO"}
+		return &TypeEncoderError{"int", "TODO"}
 	}
-	buf := make([]byte, 4)
+	buf := make([]byte, SIZEOF_INT)
 	binary.BigEndian.PutUint32(buf, val)
-	return writeBuf("uint32", w, buf)
+	return writeBuf("int", w, buf)
 
 }
 
-func encodeUint64(w io.Writer, value interface{}) (int, error) {
+func FormatLong(w io.Writer, value interface{}) error {
 	var val uint64
 
 	switch tVal := value.(type) {
@@ -165,15 +125,15 @@ func encodeUint64(w io.Writer, value interface{}) (int, error) {
 	case *uint64:
 		val = uint64(*tVal)
 	default:
-		return 0, &TypeEncoderError{"uint64", fmt.Sprintf("%s", reflect.TypeOf(tVal))}
+		return &TypeEncoderError{"long", fmt.Sprintf("%s", reflect.TypeOf(tVal))}
 	}
-	buf := make([]byte, 8)
+	buf := make([]byte, SIZEOF_LONG)
 	binary.BigEndian.PutUint64(buf, val)
-	return writeBuf("uint64", w, buf)
+	return writeBuf("long", w, buf)
 
 }
 
-func encodeFloat32(w io.Writer, value interface{}) (int, error) {
+func FormatFloat(w io.Writer, value interface{}) error {
 	var val float32
 
 	switch tVal := value.(type) {
@@ -182,12 +142,12 @@ func encodeFloat32(w io.Writer, value interface{}) (int, error) {
 	case *float32:
 		val = *tVal
 	default:
-		return 0, &TypeEncoderError{"float32", "TODO"}
+		return &TypeEncoderError{"float", "TODO"}
 	}
-	return encodeUint32(w, math.Float32bits(val))
+	return FormatInt(w, math.Float32bits(val))
 }
 
-func encodeFloat64(w io.Writer, value interface{}) (int, error) {
+func FormatDouble(w io.Writer, value interface{}) error {
 	var val float64
 
 	switch tVal := value.(type) {
@@ -196,13 +156,13 @@ func encodeFloat64(w io.Writer, value interface{}) (int, error) {
 	case *float64:
 		val = *tVal
 	default:
-		return 0, &TypeEncoderError{"float64", "TODO"}
+		return &TypeEncoderError{"double", "TODO"}
 	}
-	return encodeUint64(w, math.Float64bits(val))
+	return FormatLong(w, math.Float64bits(val))
 
 }
 
-func encodeString(w io.Writer, value interface{}) (int, error) {
+func FormatString(w io.Writer, value interface{}) error {
 	var val []byte
 
 	switch tVal := value.(type) {
@@ -215,33 +175,33 @@ func encodeString(w io.Writer, value interface{}) (int, error) {
 	case *string:
 		val = []byte(*tVal)
 	default:
-		return 0, &TypeEncoderError{"string", "TODO"}
+		return &TypeEncoderError{"string", "TODO"}
 	}
 
 	if len(val) == 0 {
-		n, err := writeNull(w)
+		err := writeNull(w)
 		if err != nil {
-			return 0, err
+			return err
 		}
-		return n, nil
+		return nil
 	}
 
 	size := len(val)
-	n, err := encodeNullableSize(w, size)
+	err := FormatNullable(w, size)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
-	bufN, err := writeBuf("string", w, val)
+	err = writeBuf("string", w, val)
 	if err != nil {
-		return bufN + n, err
+		return err
 	}
 
-	return bufN + n, nil
+	return nil
 
 }
 
-func encodeType(w io.Writer, value interface{}) (int, error) {
+func FormatType(w io.Writer, value interface{}) error {
 	var val byte
 
 	switch tVal := value.(type) {
@@ -254,7 +214,7 @@ func encodeType(w io.Writer, value interface{}) (int, error) {
 	case *uint8:
 		val = byte(*tVal)
 	default:
-		return 0, &TypeEncoderError{"type", "TODO"}
+		return &TypeEncoderError{"type", "TODO"}
 	}
 
 	if val == NULL_BYTE {
@@ -264,7 +224,7 @@ func encodeType(w io.Writer, value interface{}) (int, error) {
 
 }
 
-func encodeBool(w io.Writer, value interface{}) (int, error) {
+func FormatBool(w io.Writer, value interface{}) error {
 	var val byte
 
 	switch tVal := value.(type) {
@@ -283,14 +243,14 @@ func encodeBool(w io.Writer, value interface{}) (int, error) {
 			val = TRUE_BYTE
 		}
 	default:
-		return 0, &TypeEncoderError{"bool", "TODO"}
+		return &TypeEncoderError{"bool", "TODO"}
 	}
 
 	return writeBuf("bool", w, []byte{val})
 
 }
 
-func encodeByte(w io.Writer, value interface{}) (int, error) {
+func FormatByte(w io.Writer, value interface{}) error {
 	var val byte
 
 	switch tVal := value.(type) {
@@ -302,8 +262,24 @@ func encodeByte(w io.Writer, value interface{}) (int, error) {
 		val = byte(*tVal)
 	case *uint8:
 		val = byte(*tVal)
+	case int:
+		val = byte(tVal)
+	case uint:
+		val = byte(tVal)
+	case *int:
+		val = byte(*tVal)
+	case *uint:
+		val = byte(*tVal)
+	case int32:
+		val = byte(tVal)
+	case uint32:
+		val = byte(tVal)
+	case *int32:
+		val = byte(*tVal)
+	case *uint32:
+		val = byte(*tVal)
 	default:
-		return 0, &TypeEncoderError{"byte", "TODO"}
+		return &TypeEncoderError{"byte", "TODO"}
 	}
 
 	if val == NULL_BYTE {
@@ -313,52 +289,49 @@ func encodeByte(w io.Writer, value interface{}) (int, error) {
 
 }
 
-func encodeSize(w io.Writer, value interface{}) (int, error) {
+func FormatSize(w io.Writer, value interface{}) error {
 
 	val, err := castToInt("size", value)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	var b1 int
 
 	msb := val >> MAX_SHIFT
 	if msb != 0 {
-		b1 = -128
+		b1 = NEXT_MASK
 	} else {
 		b1 = 0
 	}
 
-	var total int
-	n, err := writeBuf("size", w, []byte{byte(b1 | (val & 0x7F))})
+	err = writeBuf("size", w, []byte{byte(b1 | (val & 0x7F))})
 	if err != nil {
-		return n, err
+		return err
 	}
-	total += n
 	for val = msb; val > 0; val = msb {
 
 		msb >>= MAX_SHIFT
 		if msb != 0 {
-			b1 = -128
+			b1 = NEXT_MASK
 		} else {
 			b1 = 0
 		}
 
-		n, err := writeBuf("size", w, []byte{byte(b1 | (val & 0x7F))})
+		err := writeBuf("size", w, []byte{byte(b1 | (val & 0x7F))})
 		if err != nil {
-			return n, err
+			return err
 		}
-		total += n
 	}
 
-	return total, err
+	return err
 }
 
-func encodeNullableSize(w io.Writer, value interface{}) (int, error) {
+func FormatNullable(w io.Writer, value interface{}) error {
 
-	val, err := castToInt("null-size", value)
+	val, err := castToInt("nullable", value)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	var b1 int
@@ -370,13 +343,9 @@ func encodeNullableSize(w io.Writer, value interface{}) (int, error) {
 		b1 = 0
 	}
 
-	var total int
-
-	n, err := writeBuf("null-size", w, []byte{byte(b1 | (val & 0x7F))})
-	if err != nil {
-		return n, err
+	if err = writeBuf("nullable", w, []byte{byte(b1 | (val & 0x7F))}); err != nil {
+		return err
 	}
-	total += n
 
 	for val = msb; val > 0; val = msb {
 
@@ -387,28 +356,26 @@ func encodeNullableSize(w io.Writer, value interface{}) (int, error) {
 			b1 = 0
 		}
 
-		n, err := writeBuf("null-size", w, []byte{byte(b1 | (val & 0x7F))})
-		if err != nil {
-			return n, err
+		if err := writeBuf("null-size", w, []byte{byte(b1 | (val & 0x7F))}); err != nil {
+			return err
 		}
-		total += n
 	}
 
-	return total, nil
+	return nil
 }
 
-func writeNull(w io.Writer) (int, error) {
+func writeNull(w io.Writer) error {
 	return writeBuf("write null", w, []byte{0x00})
 }
 
-func writeBuf(fnName string, w io.Writer, buf []byte) (int, error) {
+func writeBuf(fnName string, w io.Writer, buf []byte) error {
 
-	n, err := w.Write(buf)
+	_, err := w.Write(buf)
 	if err != nil {
-		return n, &EncoderWriteError{fnName, n, err}
+		return &EncoderWriteError{fnName, err}
 	}
 
-	return n, nil
+	return nil
 }
 
 func castToInt(fnName string, value interface{}) (int, error) {
@@ -447,14 +414,13 @@ func castToInt(fnName string, value interface{}) (int, error) {
 }
 
 type EncoderWriteError struct {
-	Mame   string
-	writeN int
-	err    error
+	Mame string
+	err  error
 }
 
 func (e *EncoderWriteError) Error() string {
 
-	return "ras: (encoderFunc " + e.Mame + ") write" + e.err.Error() + ""
+	return "ras: (FormatFunc " + e.Mame + ") write" + e.err.Error() + ""
 }
 
 type TypeEncoderError struct {
@@ -470,5 +436,5 @@ func (e *TypeEncoderError) Error() string {
 	// if e.Type.Kind() != reflect.Ptr {
 	// 	return "ras: Decode(non-pointer " + e.Type.String() + ")"
 	// }
-	return "ras: (encoderFunc " + e.Mame + ") " + e.Msg + ""
+	return "ras: (FormatFunc " + e.Mame + ") " + e.Msg + ""
 }
