@@ -105,12 +105,12 @@ func ParseUUID(r io.Reader, into interface{}) error {
 	return nil
 }
 
-func ParseTime(r io.Reader, into interface{}) (int, error) {
+func ParseTime(r io.Reader, into interface{}) error {
 
 	buf := make([]byte, 8)
-	n, err := r.Read(buf)
+	_, err := r.Read(buf)
 	if err != nil {
-		return n, &ParseError{
+		return &ParseError{
 			"time",
 			err.Error(),
 		}
@@ -132,13 +132,13 @@ func ParseTime(r io.Reader, into interface{}) (int, error) {
 	case *pb.Timestamp:
 		*typed = *pb.New(time.Unix(0, timestamp))
 	default:
-		return n, &ParseError{"time",
+		return &ParseError{"time",
 			fmt.Sprintf("Parse time to <%s> unsupporsed", typed)}
 	}
-	return n, nil
+	return nil
 }
 
-func ParseType(r io.Reader, into interface{}, opts ...map[string]string) error {
+func ParseType(r io.Reader, into interface{}) error {
 
 	buf := make([]byte, 1)
 	_, err := r.Read(buf)
