@@ -32,6 +32,27 @@ func FormatUuid(r io.Writer, value interface{}) error {
 
 }
 
+func FormatBytes(r io.Writer, value interface{}) error {
+
+	switch val := value.(type) {
+	case []byte:
+		return writeBuf("bytes", r, val)
+	case *[]byte:
+		return writeBuf("bytes", r, *val)
+	case *uuid.UUID:
+		return writeBuf("bytes", r, val.Bytes())
+	case uuid.UUID:
+		return writeBuf("bytes", r, val.Bytes())
+	case string:
+		return writeBuf("bytes", r, []byte(val))
+	case *string:
+		return writeBuf("bytes", r, []byte(*val))
+	default:
+		return &TypeEncoderError{"bytes", "unknown bytes type"}
+	}
+
+}
+
 func FormatTime(w io.Writer, value interface{}) error {
 	var val int64
 
