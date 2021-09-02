@@ -35,21 +35,12 @@ const AgeDelta = 621355968000000
 func ParseBytes(r io.Reader, data []byte) error {
 
 	if len(data) == 0 {
-		for {
-			// if len(data) == cap(data) {
-			// 	// Add more capacity (let append pick how much).
-			// 	data = append(data, 0)[:len(data)]
-			// }
-			_, err := r.Read(data[len(data):cap(data)])
-			// data = data[:len(data)+n]
-			if err != nil {
-				if err == io.EOF {
-					return nil
-				}
-				return err
-			}
+		var err error
+		data, err = io.ReadAll(r)
+		if err != nil {
+			return err
 		}
-
+		return nil
 	}
 
 	readLength := 0

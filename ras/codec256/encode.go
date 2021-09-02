@@ -95,6 +95,30 @@ func FormatShort(w io.Writer, value interface{}) error {
 		val = uint16(*tVal)
 	case *uint16:
 		val = uint16(*tVal)
+	case int32:
+		val = uint16(tVal)
+	case uint32:
+		val = uint16(tVal)
+	case *int32:
+		val = uint16(*tVal)
+	case *uint32:
+		val = uint16(*tVal)
+	case int64:
+		val = uint16(tVal)
+	case uint64:
+		val = uint16(tVal)
+	case *int64:
+		val = uint16(*tVal)
+	case *uint64:
+		val = uint16(*tVal)
+	case int:
+		val = uint16(tVal)
+	case uint:
+		val = uint16(tVal)
+	case *int:
+		val = uint16(*tVal)
+	case *uint:
+		val = uint16(*tVal)
 	default:
 		return &TypeEncoderError{"short", "TODO"}
 	}
