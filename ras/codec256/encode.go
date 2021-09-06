@@ -74,7 +74,7 @@ func FormatTime(w io.Writer, value interface{}) error {
 	case *pb.Timestamp:
 		val = tVal.AsTime().UnixNano()
 	default:
-		return &TypeEncoderError{"time", "TODO"}
+		return &TypeEncoderError{"time", fmt.Sprintf("%s", reflect.TypeOf(tVal))}
 	}
 	ticks := val / int64(time.Millisecond)
 	ticks = ticks*10 + AgeDelta
@@ -120,7 +120,7 @@ func FormatShort(w io.Writer, value interface{}) error {
 	case *uint:
 		val = uint16(*tVal)
 	default:
-		return &TypeEncoderError{"short", "TODO"}
+		return &TypeEncoderError{"short", fmt.Sprintf("%s", reflect.TypeOf(tVal))}
 	}
 	buf := make([]byte, SIZEOF_SHORT)
 	binary.BigEndian.PutUint16(buf, val)
