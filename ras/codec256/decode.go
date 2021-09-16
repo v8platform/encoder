@@ -282,8 +282,18 @@ func ParseInt(r io.Reader, into interface{}) error {
 		*typed = uint64(val)
 	case *int64:
 		*typed = int64(val)
+	case bool:
+		typed = false
+		if val == 1 {
+			typed = true
+		}
+	case *bool:
+		*typed = false
+		if val == 1 {
+			*typed = true
+		}
 	default:
-		return &ParseError{"uint32",
+		return &ParseError{"int32",
 			fmt.Sprintf("convert to <%s> unsupporsed", reflect.TypeOf(typed))}
 	}
 	return nil

@@ -148,6 +148,16 @@ func FormatInt(w io.Writer, value interface{}) error {
 		val = uint32(*tVal)
 	case *uint32:
 		val = uint32(*tVal)
+	case bool:
+		val = uint32(0)
+		if tVal {
+			val = uint32(1)
+		}
+	case *bool:
+		val = uint32(0)
+		if *tVal {
+			val = uint32(1)
+		}
 	default:
 		return &TypeEncoderError{"int", "TODO"}
 	}
